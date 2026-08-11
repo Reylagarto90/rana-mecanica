@@ -16,7 +16,7 @@ function GithubPagesRedirect() {
   const navigate = useNavigate()
   useEffect(() => {
     const ruta = sessionStorage.getItem('redirect_route')
-    if (ruta && ruta !== '/') {
+    if (ruta && ruta !== '/' && ruta !== '') {
       sessionStorage.removeItem('redirect_route')
       navigate(ruta, { replace: true })
     }
