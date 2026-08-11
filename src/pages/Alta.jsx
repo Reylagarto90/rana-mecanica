@@ -153,7 +153,7 @@ export default function FormularioAlta() {
       <div style={{ width: "100%", maxWidth: 480 }}>
         {/* CABECERA */}
         <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div style={{ fontSize: 48, marginBottom: 8 }}>🐸</div>
+          <div style={{ fontSize: 48, marginBottom: 8 }}><img src="/rana-mecanica/logo.jpg" alt="logo" style={{ width:90, height:90, borderRadius:"50%", objectFit:"cover" }}/></div>
           <h1 style={{ fontFamily: "'Playfair Display', serif", color: C.blanco, fontSize: 26, marginBottom: 6 }}>
             Hazte peñista
           </h1>
