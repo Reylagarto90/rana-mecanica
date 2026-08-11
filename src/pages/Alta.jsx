@@ -134,7 +134,7 @@ export default function FormularioAlta() {
             📱 Te avisaremos cuando tu alta sea aprobada. El pago de la cuota se gestionará tras la confirmación.
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, color: C.muted }}>
-            <span style={{ fontSize: 20 }}>🐸</span> Peña La Rana Mecánica · Levante UD
+            <img src="/rana-mecanica/logo.jpg" alt="La Rana Mecánica" style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover" }}/>D
           </div>
         </div>
       </div>
