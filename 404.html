@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8"/>
+    <title>La Rana Mecánica</title>
+    <script>
+      // Truco GitHub Pages + React Router
+      // Guarda la ruta en sessionStorage y redirige a la raíz
+      // El App.jsx la lee y navega a la ruta correcta
+      const path = window.location.pathname;
+      const repo = '/rana-mecanica'; // mismo que vite.config.js base
+      const route = path.replace(repo, '') || '/';
+      sessionStorage.setItem('redirect_route', route);
+      window.location.replace(repo + '/');
+    </script>
+  </head>
+  <body></body>
+</html>
