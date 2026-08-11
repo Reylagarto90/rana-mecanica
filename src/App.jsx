@@ -12,13 +12,6 @@ function RutaPrivada({ children }) {
 }
 
 export default function App() {
-  // Leer ruta desde parámetro URL (truco GitHub Pages)
-  const params = new URLSearchParams(window.location.search)
-  const rutaParam = params.get('ruta')
-  if (rutaParam) {
-    window.history.replaceState(null, '', '/rana-mecanica' + rutaParam)
-  }
-
   return (
     <Routes>
       <Route path="/"            element={<Navigate to="/alta" replace />} />
