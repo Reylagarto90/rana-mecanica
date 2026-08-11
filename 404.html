@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8"/>
     <script>
-      var seg = '/rana-mecanica';
-      var ruta = window.location.pathname.replace(seg, '') || '/';
-      sessionStorage.setItem('redirect_route', ruta);
-      window.location.replace(seg + '/');
+      var ruta = window.location.pathname.replace('/rana-mecanica', '');
+      window.location.replace(
+        'https://reylagarto90.github.io/rana-mecanica/?ruta=' + encodeURIComponent(ruta)
+      );
     </script>
   </head>
   <body></body>
