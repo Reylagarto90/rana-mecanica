@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8"/>
+    <script>
+      var seg = window.location.pathname.split('/').slice(0,2).join('/');
+      var ruta = window.location.pathname.slice(seg.length) || '/';
+      sessionStorage.setItem('redirect_route', ruta);
+      window.location.replace(seg + '/');
+    </script>
+  </head>
+  <body></body>
+</html>
