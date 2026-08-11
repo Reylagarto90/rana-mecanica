@@ -149,7 +149,7 @@ function Login({onLogin, onMultiple}){
 }
 
 // ── MIS DATOS ─────────────────────────────────────────
-function MisDatos({socio, onLogout, onCorregir}){
+function MisDatos({socio, onLogout, onCorregir, onCambiarPerfil}){
   const [confirmado,setConfirmado]=useState(false);
 
   const confirmar=async()=>{
@@ -185,7 +185,10 @@ function MisDatos({socio, onLogout, onCorregir}){
             <div style={{color:"rgba(255,255,255,0.5)",fontSize:11}}>Temporada 2026/2027</div>
           </div>
         </div>
-        <button onClick={onLogout} style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.2)",color:C.blanco,borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>Salir</button>
+        <div style={{display:"flex",gap:8}}>
+          {onCambiarPerfil&&<button onClick={onCambiarPerfil} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:C.blanco,borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>👥 Cambiar</button>}
+          <button onClick={onLogout} style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.2)",color:C.blanco,borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>Salir</button>
+        </div>
       </div>
 
       <div style={{maxWidth:480,margin:"0 auto",padding:"20px 16px"}}>
@@ -236,6 +239,8 @@ function MisDatos({socio, onLogout, onCorregir}){
               ["Email",socio.email||"—"],
               ["Tipo",socio.tipo],
               ["Cargo",socio.cargo],
+              ["Acciones Levante",socio.tiene_acciones?(socio.num_acciones||1)+" acción/es":"No"],
+              ["Nº Abonado",socio.es_abonado?(socio.num_abonado||"Sí"):"No abonado/a"],
             ].map(([k,v])=>(
               <div key={k} style={{padding:"10px 12px",background:C.grisLight,borderRadius:10}}>
                 <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:0.5,marginBottom:3,fontWeight:600}}>{k}</div>
@@ -265,6 +270,10 @@ function SolicitarCorreccion({socio, onVolver, onEnviado}){
     nombre:socio.nombre, apellidos:socio.apellidos,
     dni:socio.dni||"", fecha_nac:socio.fecha_nac?socio.fecha_nac.split("T")[0]:"",
     email:socio.email||"", telefono:socio.telefono==="512512"?"":socio.telefono||"",
+    tiene_acciones:socio.tiene_acciones||false,
+    num_acciones:socio.num_acciones||0,
+    es_abonado:socio.es_abonado||false,
+    num_abonado:socio.num_abonado||"",
     comentarios:"",
   });
   const [enviando,setEnviando]=useState(false);
@@ -272,7 +281,7 @@ function SolicitarCorreccion({socio, onVolver, onEnviado}){
 
   const enviar=async()=>{
     setEnviando(true);
-    // Detectar cambios y guardar en Supabase
+    // Detectar cambios de texto y guardar en verificaciones
     const campos = ["nombre","apellidos","dni","fecha_nac","email","telefono"];
     for(const campo of campos){
       const original = socio[campo]||"";
@@ -281,13 +290,20 @@ function SolicitarCorreccion({socio, onVolver, onEnviado}){
         await supabase.from("verificaciones").insert({
           socio_id: socio.id,
           campo,
-          valor_anterior: original,
-          valor_nuevo: nuevo,
+          valor_anterior: String(original),
+          valor_nuevo: String(nuevo),
           comentario: form.comentarios,
           estado: "pendiente"
         });
       }
     }
+    // Guardar campos de acciones y abono directamente (no necesitan aprobación)
+    await supabase.from("socios").update({
+      tiene_acciones: form.tiene_acciones,
+      num_acciones: form.tiene_acciones ? Number(form.num_acciones)||0 : 0,
+      es_abonado: form.es_abonado,
+      num_abonado: form.es_abonado ? form.num_abonado : null,
+    }).eq("id", socio.id);
     setEnviando(false);
     onEnviado();
   };
@@ -322,6 +338,40 @@ function SolicitarCorreccion({socio, onVolver, onEnviado}){
             {campo("Teléfono","telefono","tel","6XX XXX XXX")}
           </div>
           {campo("Email","email","email","tu@email.com")}
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px",marginBottom:14}}>
+            <div>
+              <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>¿Tienes acciones del Levante?</label>
+              <div style={{display:"flex",gap:8}}>
+                {[{v:true,l:"Sí"},{v:false,l:"No"}].map(o=>(
+                  <button key={String(o.v)} onClick={()=>setF("tiene_acciones",o.v)} style={{flex:1,padding:"9px",borderRadius:8,border:`2px solid ${form.tiene_acciones===o.v?C.granate:C.border}`,background:form.tiene_acciones===o.v?C.granateLight:C.blanco,cursor:"pointer",fontWeight:600,fontSize:13,fontFamily:"inherit",color:form.tiene_acciones===o.v?C.granateDark:C.gris}}>{o.l}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>¿Cuántas acciones?</label>
+              <input type="number" min="0" value={form.num_acciones||""} onChange={e=>setF("num_acciones",e.target.value)}
+                disabled={!form.tiene_acciones}
+                placeholder="0"
+                style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:15,outline:"none",fontFamily:"inherit",boxSizing:"border-box",opacity:form.tiene_acciones?1:0.4}}/>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px",marginBottom:14}}>
+            <div>
+              <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>¿Eres abonado/a?</label>
+              <div style={{display:"flex",gap:8}}>
+                {[{v:true,l:"Sí"},{v:false,l:"No"}].map(o=>(
+                  <button key={String(o.v)} onClick={()=>setF("es_abonado",o.v)} style={{flex:1,padding:"9px",borderRadius:8,border:`2px solid ${form.es_abonado===o.v?C.azul:C.border}`,background:form.es_abonado===o.v?C.azulLight:C.blanco,cursor:"pointer",fontWeight:600,fontSize:13,fontFamily:"inherit",color:form.es_abonado===o.v?C.azul:C.gris}}>{o.l}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Nº de abonado</label>
+              <input type="text" value={form.num_abonado||""} onChange={e=>setF("num_abonado",e.target.value)}
+                disabled={!form.es_abonado}
+                placeholder="12345"
+                style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:15,outline:"none",fontFamily:"inherit",boxSizing:"border-box",opacity:form.es_abonado?1:0.4}}/>
+            </div>
+          </div>
           <div style={{marginBottom:16}}>
             <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Comentarios</label>
             <textarea value={form.comentarios} onChange={e=>setF("comentarios",e.target.value)} rows={3}
@@ -365,7 +415,7 @@ export default function PortalVerificacion(){
 
   if(pantalla==="login")     return <Login onLogin={s=>{setSocio(s);setPantalla("datos");}} onMultiple={handleMultiple}/>;
   if(pantalla==="selector")  return <SelectorPerfil perfiles={perfiles} onSeleccionar={handleSeleccionar} onVolver={()=>setPantalla("login")}/>;
-  if(pantalla==="datos")     return <MisDatos socio={socio} onLogout={logout} onCorregir={()=>setPantalla("correccion")}/>;
+  if(pantalla==="datos")     return <MisDatos socio={socio} onLogout={logout} onCorregir={()=>setPantalla("correccion")} onCambiarPerfil={perfiles.length>1?()=>setPantalla("selector"):null}/>;
   if(pantalla==="correccion")return <SolicitarCorreccion socio={socio} onVolver={()=>setPantalla("datos")} onEnviado={()=>setPantalla("enviado")}/>;
   if(pantalla==="enviado")   return <Enviado socio={socio} onLogout={logout}/>;
 }

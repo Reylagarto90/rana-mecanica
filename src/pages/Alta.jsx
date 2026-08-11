@@ -67,6 +67,7 @@ export default function FormularioAlta() {
     nombre: "", apellidos: "", dni: "", fechaNac: "",
     telefono: "", email: "", municipio: "", comoConocio: "",
     tipo: "adulto", rgpd: false, fotoAut: false, comentarios: "",
+    tieneAcciones: false, numAcciones: 0, esAbonado: false, numAbonado: "",
   });
   const [errores, setErrores] = useState({});
 
@@ -123,6 +124,8 @@ export default function FormularioAlta() {
               ["Teléfono", form.telefono],
               ["Municipio", form.municipio],
               ["Tipo de socio", `${tipoSelec?.label} — ${tipoSelec?.precio}€/año`],
+              ["Acciones Levante", form.tieneAcciones ? `Sí (${form.numAcciones||1})` : "No"],
+              ["Abonado/a", form.esAbonado ? `Sí${form.numAbonado?" — Nº "+form.numAbonado:""}` : "No"],
             ].map(([k, v]) => (
               <div key={k} style={{ display: "flex", justifyContent: "space-between", marginBottom: 8, fontSize: 14 }}>
                 <span style={{ color: C.muted }}>{k}</span>
@@ -134,7 +137,7 @@ export default function FormularioAlta() {
             📱 Te avisaremos cuando tu alta sea aprobada. El pago de la cuota se gestionará tras la confirmación.
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, color: C.muted }}>
-            <img src="/rana-mecanica/logo.jpg" alt="La Rana Mecánica" style={{ width: 80, height: 80, borderRadius: "50%", objectFit: "cover" }}/>D
+            <span style={{ fontSize: 20 }}>🐸</span> Peña La Rana Mecánica · Levante UD
           </div>
         </div>
       </div>
@@ -153,7 +156,7 @@ export default function FormularioAlta() {
       <div style={{ width: "100%", maxWidth: 480 }}>
         {/* CABECERA */}
         <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div style={{ fontSize: 48, marginBottom: 8 }}><img src="/rana-mecanica/logo.jpg" alt="logo" style={{ width:90, height:90, borderRadius:"50%", objectFit:"cover" }}/></div>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>🐸</div>
           <h1 style={{ fontFamily: "'Playfair Display', serif", color: C.blanco, fontSize: 26, marginBottom: 6 }}>
             Hazte peñista
           </h1>
@@ -199,6 +202,54 @@ export default function FormularioAlta() {
                 <Campo label="Fecha de nacimiento">
                   <Input value={form.fechaNac} onChange={v => set("fechaNac", v)} type="date" />
                 </Campo>
+              </div>
+              <div style={{ gridColumn: "1 / -1", marginBottom: 16 }}>
+                <label style={{ fontSize: 14, fontWeight: 600, color: C.text, display: "block", marginBottom: 10 }}>
+                  ¿Tienes acciones del Levante UD?
+                </label>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  {[{v:true,l:"Sí, tengo acciones"},{v:false,l:"No tengo acciones"}].map(o=>(
+                    <button key={String(o.v)} onClick={()=>set("tieneAcciones",o.v)} style={{
+                      padding:"11px 20px", borderRadius:10,
+                      border:`2px solid ${form.tieneAcciones===o.v?C.granate:C.border}`,
+                      background:form.tieneAcciones===o.v?C.granateLight:C.blanco,
+                      cursor:"pointer", fontWeight:600, fontSize:14, fontFamily:"inherit",
+                      color:form.tieneAcciones===o.v?C.granateDark:C.gris
+                    }}>{o.l}</button>
+                  ))}
+                </div>
+                {form.tieneAcciones&&(
+                  <div style={{marginTop:10}}>
+                    <label style={{fontSize:13,color:C.gris,display:"block",marginBottom:5}}>¿Cuántas acciones?</label>
+                    <input type="number" min="1" value={form.numAcciones||""} onChange={e=>set("numAcciones",e.target.value)}
+                      placeholder="Número de acciones"
+                      style={{padding:"11px 14px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:15,outline:"none",fontFamily:"inherit",width:180}}/>
+                  </div>
+                )}
+              </div>
+              <div style={{ gridColumn: "1 / -1", marginBottom: 16 }}>
+                <label style={{ fontSize: 14, fontWeight: 600, color: C.text, display: "block", marginBottom: 10 }}>
+                  ¿Eres abonado/a del Levante UD?
+                </label>
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  {[{v:true,l:"Sí, soy abonado/a"},{v:false,l:"No soy abonado/a"}].map(o=>(
+                    <button key={String(o.v)} onClick={()=>set("esAbonado",o.v)} style={{
+                      padding:"11px 20px", borderRadius:10,
+                      border:`2px solid ${form.esAbonado===o.v?C.azul:C.border}`,
+                      background:form.esAbonado===o.v?C.azulLight:C.blanco,
+                      cursor:"pointer", fontWeight:600, fontSize:14, fontFamily:"inherit",
+                      color:form.esAbonado===o.v?C.azul:C.gris
+                    }}>{o.l}</button>
+                  ))}
+                </div>
+                {form.esAbonado&&(
+                  <div style={{marginTop:10}}>
+                    <label style={{fontSize:13,color:C.gris,display:"block",marginBottom:5}}>Número de abonado</label>
+                    <input type="text" value={form.numAbonado||""} onChange={e=>set("numAbonado",e.target.value)}
+                      placeholder="Tu número de abonado"
+                      style={{padding:"11px 14px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:15,outline:"none",fontFamily:"inherit",width:220}}/>
+                  </div>
+                )}
               </div>
               <Campo label="Municipio" required error={errores.municipio}>
                 <select value={form.municipio} onChange={e => set("municipio", e.target.value)}
@@ -268,6 +319,8 @@ export default function FormularioAlta() {
                   ["Email", form.email || "—"],
                   ["Municipio", form.municipio],
                   ["Tipo de socio", `${tipoSelec?.label} — ${tipoSelec?.precio}€/año`],
+              ["Acciones Levante", form.tieneAcciones ? `Sí (${form.numAcciones||1})` : "No"],
+              ["Abonado/a", form.esAbonado ? `Sí${form.numAbonado?" — Nº "+form.numAbonado:""}` : "No"],
                 ].map(([k, v]) => (
                   <div key={k} style={{ display: "flex", justifyContent: "space-between", padding: "7px 0", borderBottom: `1px solid ${C.granate}20`, fontSize: 14 }}>
                     <span style={{ color: C.muted }}>{k}</span>
