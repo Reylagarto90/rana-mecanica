@@ -3,7 +3,7 @@ import { supabase } from "../supabase.js";
 
 // ── EMAILJS ───────────────────────────────────────────
 const EMAILJS_SERVICE_ID  = "service_g9n6e5c";
-const EMAILJS_TEMPLATE_ID = "template_ygte3bo";
+const EMAILJS_TEMPLATE_ID = "template_0rjj2y8";
 const EMAILJS_PUBLIC_KEY  = "IvxWWpgwA15GDRGyF";
 const SECRETARIO_EMAIL    = "penyaranamecanica@gmail.com";
 
