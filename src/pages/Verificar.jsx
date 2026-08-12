@@ -96,11 +96,15 @@ const enviarEmail = async (destinatario, asunto, mensaje) => {
   try {
     const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "origin": "https://reylagarto90.github.io",
+      },
       body: JSON.stringify({
         service_id:  EMAILJS_SERVICE_ID,
         template_id: EMAILJS_TEMPLATE_ID,
         user_id:     EMAILJS_PUBLIC_KEY,
+        accessToken: EMAILJS_PUBLIC_KEY,
         template_params: {
           to_email:  destinatario,
           subject:   asunto,
@@ -110,6 +114,10 @@ const enviarEmail = async (destinatario, asunto, mensaje) => {
         },
       }),
     });
+    if(!res.ok){
+      const txt = await res.text();
+      console.error("EmailJS error:", res.status, txt);
+    }
     return res.ok;
   } catch(e) {
     console.error("Error enviando email:", e);
@@ -300,56 +308,22 @@ function FormularioUnificado({socio,onEnviado,onLogout,onCambiarPerfil,perfiles}
     const socioPDF={...socio,...form};
     const htmlDoc=generarPDFHTML(socioPDF);
 
-    // 4. Enviar email al peñista
+    // 4. Enviar email al peñista (mensaje simple)
     const emailDest=form.email||socio.email;
     if(emailDest){
       const tieneCambios=cambios.length>0;
-      await enviarEmail(
-        emailDest,
-        `La Rana Mecánica · ${tieneCambios?"Solicitud de cambios":"Verificación"} — ${socio.nombre} ${socio.apellidos}`,
-        `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-          <div style="background:#8B0A3A;padding:20px;border-radius:8px;margin-bottom:20px;text-align:center;">
-            <h2 style="color:white;margin:0;">🐸 La Rana Mecánica</h2>
-            <p style="color:rgba(255,255,255,0.8);margin:6px 0 0;">${tieneCambios?"Solicitud de cambios recibida":"Datos verificados correctamente"}</p>
-          </div>
-          <p>Hola <strong>${socio.nombre}</strong>,</p>
-          ${tieneCambios
-            ?`<p>Hemos recibido tu solicitud de cambios en los siguientes datos: <strong>${cambios.map(c=>c.campo).join(", ")}</strong>. La junta los revisará y aplicará en breve.</p>
-               <div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px;margin:12px 0;">
-                 <strong>⚠️ Los cambios están pendientes de aprobación.</strong> Tus datos actuales no cambiarán hasta que la junta los apruebe.
-               </div>`
-            :`<p>Has verificado tus datos correctamente para la temporada 2026/2027. ¡Gracias!</p>`
-          }
-          <p>Adjunto encontrarás tu ficha con los datos y consentimientos actuales. Imprímela, fírmala y entrégala al Secretario.</p>
-          <p style="color:#64748b;font-size:13px;">Contacto: <a href="mailto:penyaranamecanica@gmail.com">penyaranamecanica@gmail.com</a></p>
-          <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
-          ${htmlDoc}
-        </div>`
-      );
+      const mensajePenista = tieneCambios
+        ? `Hola ${socio.nombre},\n\nHemos recibido tu solicitud de cambios en los siguientes datos: ${cambios.map(c=>c.campo).join(", ")}.\n\nLa junta los revisará y aplicará en breve. Tus datos actuales no cambiarán hasta que la junta los apruebe.\n\nPuedes descargar tu ficha provisional desde el portal de verificación:\nhttps://reylagarto90.github.io/rana-mecanica/#/verificar\n\nPara cualquier consulta: penyaranamecanica@gmail.com\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`
+        : `Hola ${socio.nombre},\n\nTus datos y consentimientos han sido verificados correctamente para la temporada 2026/2027. ¡Gracias!\n\nPuedes descargar tu ficha desde el portal de verificación e imprimirla para entregarla firmada al Secretario:\nhttps://reylagarto90.github.io/rana-mecanica/#/verificar\n\nPara cualquier consulta: penyaranamecanica@gmail.com\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`;
+      await enviarEmail(emailDest, `La Rana Mecánica · ${tieneCambios?"Solicitud de cambios":"Verificación"} — ${socio.nombre} ${socio.apellidos}`, mensajePenista);
     }
 
-    // 5. Enviar copia a la junta si hay cambios en datos
-    if(cambios.length>0){
-      await enviarEmail(
-        SECRETARIO_EMAIL,
-        `[CAMBIOS] ${socio.nombre} ${socio.apellidos} (${socio.numero}) ha solicitado modificaciones`,
-        `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-          <div style="background:#003DA5;padding:16px;border-radius:8px;margin-bottom:16px;">
-            <h3 style="color:white;margin:0;">📥 Cambios pendientes de aprobación</h3>
-          </div>
-          <p><strong>${socio.nombre} ${socio.apellidos}</strong> (${socio.numero}) ha solicitado los siguientes cambios:</p>
-          <table style="width:100%;border-collapse:collapse;margin:12px 0;">
-            ${cambios.map(c=>`<tr><td style="padding:7px 12px;border:1px solid #e2e8f0;font-weight:600;">${c.campo}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;color:#c0392b;">${c.orig||"(vacío)"}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;">→</td><td style="padding:7px 12px;border:1px solid #e2e8f0;color:#1a7a3c;font-weight:600;">${c.nuevo}</td></tr>`).join("")}
-          </table>
-          <a href="https://reylagarto90.github.io/rana-mecanica/#/junta/login"
-             style="display:inline-block;background:#C0185A;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:700;margin:12px 0;">
-            Ir al panel de la junta →
-          </a>
-          <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
-          ${htmlDoc}
-        </div>`
-      );
-    }
+    // 5. Enviar copia a la junta siempre
+    const resumenCambios = cambios.length>0
+      ? `Cambios solicitados:\n${cambios.map(c=>`  - ${c.campo}: "${c.orig||"(vacío)"}" → "${c.nuevo}"`).join("\n")}`
+      : "Ha confirmado que sus datos son correctos.";
+    const mensajeJunta = `${socio.nombre} ${socio.apellidos} (${socio.numero}) ha completado su verificación.\n\n${resumenCambios}\n\nAccede al panel de la junta para gestionar los cambios:\nhttps://reylagarto90.github.io/rana-mecanica/#/junta/login`;
+    await enviarEmail(SECRETARIO_EMAIL, `[VERIFICACIÓN] ${socio.nombre} ${socio.apellidos} (${socio.numero})`, mensajeJunta);
 
     setEnviando(false);
     onEnviado({socio:socioPDF,hayCambios:cambios.length>0,htmlDoc});
