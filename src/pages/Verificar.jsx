@@ -94,59 +94,169 @@ const generarPDFHTML = (socio) => {
   `;
 };
 
-// ── PDF REAL (html2pdf.js vía CDN, sin dependencia en package.json) ────
-let _html2pdfPromise = null;
-const cargarHtml2Pdf = () => {
-  if (window.html2pdf) return Promise.resolve(window.html2pdf);
-  if (_html2pdfPromise) return _html2pdfPromise;
-  _html2pdfPromise = new Promise((resolve, reject) => {
+// ── PDF REAL con jsPDF (texto nativo, sin capturas de pantalla) ────────
+let _jsPDFPromise = null;
+const cargarJsPDF = () => {
+  if (window.jspdf?.jsPDF) return Promise.resolve(window.jspdf.jsPDF);
+  if (_jsPDFPromise) return _jsPDFPromise;
+  _jsPDFPromise = new Promise((resolve, reject) => {
     const s = document.createElement("script");
-    s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
-    s.onload = () => resolve(window.html2pdf);
-    s.onerror = () => reject(new Error("No se pudo cargar html2pdf.js"));
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    s.onload = () => resolve(window.jspdf.jsPDF);
+    s.onerror = () => reject(new Error("No se pudo cargar jsPDF"));
     document.head.appendChild(s);
   });
-  return _html2pdfPromise;
+  return _jsPDFPromise;
 };
 
-// Genera el PDF a partir del HTML de la ficha y lo sube a Supabase Storage
-// (bucket privado 'fichas'). Devuelve una URL firmada válida 180 días, o null si falla.
-const generarYSubirPDF = async (socio, htmlDoc) => {
-  let contenedor = null, overlay = null;
+// Genera el PDF de la ficha con texto real (jsPDF) — sin capturas de pantalla,
+// así que la paginación y el ancho quedan siempre correctos.
+const generarPDFBlob = async (socio) => {
+  const jsPDFCtor = await cargarJsPDF();
+  const doc = new jsPDFCtor({ unit: "mm", format: "a4" });
+
+  const M = 15;                    // margen
+  const W = 210 - M * 2;           // ancho útil
+  const PH = 297;                  // alto de página
+  let y = M;
+
+  const nuevaPagina = () => { doc.addPage(); y = M; };
+  const check = (alto) => { if (y + alto > PH - M) nuevaPagina(); };
+
+  const fmtF=(f)=>{ if(!f) return "—"; const d=f.split("T")[0].split("-"); return `${d[2]}/${d[1]}/${d[0]}`; };
+  const si_no=(v)=>v?"Sí":"No";
+  const ahora = new Date().toLocaleString("es-ES");
+
+  // ── Cabecera ──
+  doc.setFillColor(139,10,58);
+  doc.roundedRect(M, y, W, 20, 2, 2, "F");
+  doc.setTextColor(255,255,255);
+  doc.setFont("helvetica","bold"); doc.setFontSize(14);
+  doc.text("Peña Levantinista La Rana Mecánica", M+6, y+9);
+  doc.setFont("helvetica","normal"); doc.setFontSize(9);
+  doc.text("Godella-Rocafort · Temporada 2026/2027", M+6, y+15);
+  y += 28;
+
+  // ── Título sección ──
+  const titulo=(txt)=>{
+    check(10);
+    doc.setTextColor(139,10,58);
+    doc.setFont("helvetica","bold"); doc.setFontSize(12);
+    doc.text(txt, M, y);
+    doc.setDrawColor(139,10,58);
+    doc.line(M, y+1.5, M+W, y+1.5);
+    y += 8;
+  };
+
+  // ── Fila etiqueta: valor (con fondo alterno) ──
+  let filaIdx=0;
+  const fila=(label,valor)=>{
+    const alto=7;
+    check(alto);
+    if(filaIdx%2===0){ doc.setFillColor(248,250,252); doc.rect(M,y-4.5,W,alto,"F"); }
+    filaIdx++;
+    doc.setTextColor(30,41,59);
+    doc.setFont("helvetica","bold"); doc.setFontSize(9.5);
+    doc.text(label, M+2, y);
+    doc.setFont("helvetica","normal");
+    doc.text(String(valor), M+2+W*0.42, y);
+    y += alto;
+  };
+
+  const tabla=(filas)=>{ filaIdx=0; filas.forEach(([l,v])=>fila(l,v)); y+=5; };
+
+  // Caja de color con texto envuelto (calcula alto y hace salto de página si hace falta)
+  const caja=(titulo2, texto, rgb, rgbTexto)=>{
+    doc.setFont("helvetica","bold"); doc.setFontSize(9);
+    const lineasTitulo = doc.splitTextToSize(titulo2, W-8);
+    doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+    const lineasTexto = doc.splitTextToSize(texto, W-8);
+    const altoCaja = 6 + lineasTitulo.length*4.5 + lineasTexto.length*4 + 6;
+    check(altoCaja);
+    doc.setFillColor(...rgb);
+    doc.roundedRect(M, y-4, W, altoCaja, 2, 2, "F");
+    let yy=y+2;
+    doc.setTextColor(...rgbTexto);
+    doc.setFont("helvetica","bold"); doc.setFontSize(9);
+    lineasTitulo.forEach(l=>{ doc.text(l, M+4, yy); yy+=4.5; });
+    doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+    lineasTexto.forEach(l=>{ doc.text(l, M+4, yy); yy+=4; });
+    y += altoCaja + 6;
+  };
+
+  titulo("Verificación de datos del socio");
+  tabla([
+    ["Nº Socio", socio.numero],
+    ["Nombre completo", `${socio.nombre} ${socio.apellidos}`],
+    ["DNI / NIE", socio.dni||"—"],
+    ["Fecha nacimiento", fmtF(socio.fecha_nac)],
+    ["Teléfono", socio.telefono==="512512"?"(pendiente)":socio.telefono||"—"],
+    ["Email", socio.email||"—"],
+    ["Municipio", socio.municipio||"—"],
+    ["Tipo", socio.tipo],
+    ["Cargo", socio.cargo],
+    ["Acciones Levante", socio.tiene_acciones?(socio.num_acciones||1)+" acción/es":"No"],
+    ["Nº Abonado", socio.es_abonado?(socio.num_abonado||"Sí"):"No abonado/a"],
+  ]);
+
+  titulo("Consentimientos otorgados");
+  tabla([
+    ["Tratamiento de datos (obligatorio)", si_no(socio.rgpd||socio.consent_datos)],
+    ["Foto comunicación interna", si_no(socio.consent_foto_interna)],
+    ["Foto redes sociales", si_no(socio.consent_foto_rrss)],
+    ["Foto web y materiales", si_no(socio.consent_foto_web)],
+    ["Foto cesión Levante UD/Federación", si_no(socio.consent_foto_levante)],
+    ["Comunicaciones promocionales peña", si_no(socio.consent_promo_pena)],
+    ["Info patrocinadores", si_no(socio.consent_patrocinadores)],
+    ["Grupo WhatsApp", si_no(socio.consent_whatsapp)],
+  ]);
+
+  caja("", `Datos verificados digitalmente el ${ahora}. El socio ha confirmado que sus datos son correctos a través del portal de verificación de la Peña Levantinista La Rana Mecánica.`,
+    [240,253,244],[22,101,52]);
+
+  caja("INFORMACIÓN BÁSICA SOBRE PROTECCIÓN DE DATOS",
+    "Responsable: Peña Levantinista La Rana Mecánica (Godella-Rocafort). "+
+    "Finalidad: Gestión de la relación asociativa (altas/bajas, cuotas, comunicaciones operativas, administración interna y cumplimiento de obligaciones legales). "+
+    "Legitimación: Consentimiento del interesado y ejecución del vínculo asociativo. "+
+    "Destinatarios: Levante UD/Fundación Levante UD y Federación de Peñas; Administraciones Públicas; entidades bancarias; aseguradoras; proveedores tecnológicos como encargados del tratamiento. "+
+    "Plazo: Mientras se mantenga la condición de socio y, tras la baja, durante los plazos legales de conservación. "+
+    "Derechos: acceso, rectificación, supresión, oposición, limitación y portabilidad en penyaranamecanica@gmail.com. Puede reclamar ante la AEPD (www.aepd.es). "+
+    "La negativa a autorizar imágenes no impide ser socio. Los consentimientos opcionales pueden retirarse en cualquier momento.",
+    [254,242,242],[30,41,59]);
+
+  caja("NORMAS DE USO DEL GRUPO DE WHATSAPP (si ha otorgado consentimiento)",
+    "La incorporación al grupo de WhatsApp es voluntaria. Queda prohibido compartir datos personales, fotografías o conversaciones de otros miembros fuera del grupo sin su autorización expresa. El grupo se utilizará exclusivamente para comunicaciones de la peña. El incumplimiento podrá conllevar la expulsión del grupo.",
+    [240,249,255],[12,74,110]);
+
+  caja("Nota",
+    "Este documento debe ser impreso, firmado por el socio (o su tutor legal si es menor de edad) y entregado al Secretario de la Peña para su archivo. La firma acredita que el socio ha sido informado sobre el tratamiento de sus datos y ha prestado los consentimientos indicados.",
+    [254,249,195],[113,63,18]);
+
+  // ── Firma ──
+  check(30);
+  doc.setDrawColor(226,232,240); doc.line(M,y,M+W,y); y+=8;
+  doc.setTextColor(100,116,139); doc.setFont("helvetica","normal"); doc.setFontSize(9.5);
+  doc.text("Firma del socio / tutor legal (en caso de menor):", M, y); y+=16;
+  doc.setDrawColor(148,163,184); doc.line(M,y,M+70,y); y+=5;
+  doc.setFontSize(8.5); doc.setTextColor(148,163,184);
+  doc.text(`Nombre: ${socio.nombre} ${socio.apellidos}     Fecha: ___/___/______`, M, y);
+
+  // ── Pie ──
+  const nPaginas = doc.internal.getNumberOfPages();
+  for(let i=1;i<=nPaginas;i++){
+    doc.setPage(i);
+    doc.setFontSize(8); doc.setTextColor(148,163,184);
+    doc.text("Peña Levantinista La Rana Mecánica · Godella-Rocafort · penyaranamecanica@gmail.com", 105, 290, {align:"center"});
+  }
+
+  return doc.output("blob");
+};
+
+// Genera el PDF de la ficha y lo sube a Supabase Storage (bucket privado 'fichas').
+// Devuelve una URL firmada válida 180 días, o null si falla.
+const generarYSubirPDF = async (socio) => {
   try {
-    const html2pdf = await cargarHtml2Pdf();
-
-    // Overlay de carga (tapa visualmente el contenido mientras se captura)
-    overlay = document.createElement("div");
-    overlay.style.cssText = "position:fixed;inset:0;z-index:999999;background:#8B0A3A;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;color:#fff;";
-    overlay.innerHTML = `<div style="font-size:40px;margin-bottom:10px;">🐸</div><div style="font-size:15px;font-weight:600;">Generando tu ficha en PDF...</div>`;
-
-    // Contenedor real y VISIBLE (necesario para que html2canvas lo capture bien;
-    // el overlay de arriba lo tapa por completo mientras se genera)
-    contenedor = document.createElement("div");
-    contenedor.innerHTML = htmlDoc;
-    contenedor.style.cssText = "position:fixed;top:0;left:0;width:650px;background:#ffffff;z-index:999998;";
-    document.body.appendChild(contenedor);
-    document.body.appendChild(overlay);
-
-    // Esperar a que el navegador termine de maquetar el contenido
-    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-
-    const blob = await html2pdf()
-      .from(contenedor)
-      .set({
-        margin: [10, 10, 10, 10],
-        filename: "ficha.pdf",
-        image: { type: "jpeg", quality: 0.98 },
-        html2canvas: {
-          scale: 2,
-          useCORS: true,
-          backgroundColor: "#ffffff",
-        },
-        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-        pagebreak: { mode: ["css", "avoid-all"] },
-      })
-      .outputPdf("blob");
+    const blob = await generarPDFBlob(socio);
 
     const nombreArchivo = `${crypto.randomUUID()}.pdf`;
     const { error: errSubida } = await supabase.storage
@@ -163,9 +273,6 @@ const generarYSubirPDF = async (socio, htmlDoc) => {
   } catch (e) {
     console.error("Error generando PDF:", e);
     return null;
-  } finally {
-    if (contenedor && contenedor.parentNode) document.body.removeChild(contenedor);
-    if (overlay && overlay.parentNode) document.body.removeChild(overlay);
   }
 };
 
@@ -382,10 +489,10 @@ function FormularioUnificado({socio,onEnviado,onLogout,onCambiarPerfil,perfiles}
       }
     }
 
-    // 3. Generar PDF con datos actuales + cambios propuestos, y subirlo a Storage
+    // 3. Generar PDF real (jsPDF) con datos actuales + cambios propuestos, y subirlo a Storage
     const socioPDF={...socio,...form};
-    const htmlDoc=generarPDFHTML(socioPDF);
-    const pdfUrl = await generarYSubirPDF(socioPDF, htmlDoc);
+    const htmlDoc=generarPDFHTML(socioPDF); // se mantiene como fallback de impresión si falla la subida
+    const pdfUrl = await generarYSubirPDF(socioPDF);
     const enlaceFicha = pdfUrl || "https://reylagarto90.github.io/rana-mecanica/#/verificar"; // fallback si falla la subida
 
     // 4. Enviar email al peñista (mensaje simple)
