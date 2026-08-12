@@ -113,25 +113,18 @@ const C = {
   oro:"#C9963A", oroLight:"#fdf6e8",
   rojo:"#c0392b", rojoLight:"#fdecea",
   gris:"#64748b", grisLight:"#f8fafc",
-  border:"#e2e8f0", text:"#1e293b", muted:"#94a3b8",
-  blanco:"#fff",
+  border:"#e2e8f0", text:"#1e293b", muted:"#94a3b8", blanco:"#fff",
 };
 
-// Cliente Supabase
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || "https://qgmovsqawnadgvywlbyw.supabase.co",
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ""
-);
-
-const fmtFecha = (f) => { if(!f) return "—"; const[y,m,d]=f.split("T")[0].split("-"); return `${d}/${m}/${y}`; };
+const fmtFecha=(f)=>{ if(!f) return "—"; const d=f.split("T")[0].split("-"); return `${d[2]}/${d[1]}/${d[0]}`; };
 
 // ── SELECTOR DE PERFIL ────────────────────────────────
-function SelectorPerfil({perfiles, onSeleccionar, onVolver}){
+function SelectorPerfil({perfiles,onSeleccionar,onVolver}){
   return(
     <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.granateDark} 0%,#5a0020 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"system-ui,sans-serif"}}>
       <div style={{width:"100%",maxWidth:400}}>
         <div style={{textAlign:"center",marginBottom:24}}>
-          <img src={LOGO} alt="La Rana Mecánica" style={{width:90,height:90,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.3)",objectFit:"cover",display:"block",margin:"0 auto 14px",boxShadow:"0 8px 32px rgba(0,0,0,0.4)"}}/>
+          <img src={LOGO} alt="logo" style={{width:90,height:90,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.3)",objectFit:"cover",display:"block",margin:"0 auto 14px"}}/>
           <h2 style={{color:C.blanco,fontSize:20,fontWeight:700,marginBottom:6}}>¿Quién accede?</h2>
           <p style={{color:"rgba(255,255,255,0.6)",fontSize:13}}>Hemos encontrado varios perfiles con este teléfono</p>
         </div>
@@ -144,9 +137,7 @@ function SelectorPerfil({perfiles, onSeleccionar, onVolver}){
               </div>
               <div style={{flex:1}}>
                 <div style={{fontWeight:700,fontSize:15,color:C.text}}>{p.nombre} {p.apellidos}</div>
-                <div style={{fontSize:12,color:C.muted,marginTop:2}}>
-                  {p.numero} · {p.tipo==="infantil"?"👶 Menor — acceso tutor/a":p.cargo}
-                </div>
+                <div style={{fontSize:12,color:C.muted,marginTop:2}}>{p.numero} · {p.tipo==="infantil"?"👶 Menor — acceso tutor/a":p.cargo}</div>
               </div>
               <span style={{color:C.muted,fontSize:18}}>›</span>
             </button>
@@ -161,7 +152,7 @@ function SelectorPerfil({perfiles, onSeleccionar, onVolver}){
 }
 
 // ── LOGIN ─────────────────────────────────────────────
-function Login({onLogin, onMultiple}){
+function Login({onLogin,onMultiple}){
   const [tel,setTel]=useState("");
   const [error,setError]=useState("");
   const [loading,setLoading]=useState(false);
@@ -170,51 +161,21 @@ function Login({onLogin, onMultiple}){
     const t=tel.replace(/\s/g,"").replace(/^(\+34|0034)/,"");
     if(t.length<6){setError("Introduce un teléfono válido");return;}
     setLoading(true); setError("");
-    try {
-      // Buscar en Supabase por teléfono
-      const {data, error:err} = await supabase
-        .from("socios")
-        .select("*")
-        .eq("telefono", t)
-        .eq("estado", "activo");
-
+    try{
+      const {data,error:err}=await supabase.from("socios").select("*").eq("telefono",t).eq("estado","activo");
       if(err) throw err;
-
-      if(!data || data.length===0){
-        // Intentar con 512512 (código temporal)
-        setError("No encontramos ningún peñista con ese teléfono. Si no tienes teléfono registrado, usa el código 512512.");
-        setLoading(false);
-        return;
+      if(!data||data.length===0){setError("No encontramos ningún peñista con ese teléfono. Usa el código 512512 si no tienes teléfono registrado.");setLoading(false);return;}
+      const adultos=data.filter(s=>s.tipo!=="infantil");
+      const tutorId=adultos[0]?.id;
+      let menoresTutor=[];
+      if(tutorId){
+        const {data:m}=await supabase.from("socios").select("*").eq("tutor_id",tutorId).eq("estado","activo");
+        if(m) menoresTutor=m;
       }
-
-      // Separar adultos e infantiles
-      const adultos = data.filter(s=>s.tipo!=="infantil");
-      const infantiles = data.filter(s=>s.tipo==="infantil");
-
-      // Buscar menores vinculados por tutor_id
-      let menoresVinculados = [];
-      if(adultos.length>0){
-        const tutorId = adultos[0].id;
-        const {data:menores} = await supabase
-          .from("socios")
-          .select("*")
-          .eq("tutor_id", tutorId)
-          .eq("estado", "activo");
-        if(menores) menoresVinculados = menores;
-      }
-
-      // Combinar todos los perfiles únicos
-      const todos = [...new Map([...data,...menoresVinculados].map(s=>[s.id,s])).values()];
-
-      if(todos.length>1){
-        onMultiple(todos);
-      } else {
-        onLogin(todos[0]);
-      }
-    } catch(e) {
-      console.error(e);
-      setError("Error de conexión. Inténtalo de nuevo.");
-    }
+      const todos=[...new Map([...data,...menoresTutor].map(s=>[s.id,s])).values()];
+      if(todos.length>1) onMultiple(todos);
+      else onLogin(todos[0]);
+    }catch(e){setError("Error de conexión. Inténtalo de nuevo.");}
     setLoading(false);
   };
 
@@ -222,15 +183,12 @@ function Login({onLogin, onMultiple}){
     <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.granateDark} 0%,#5a0020 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"system-ui,sans-serif"}}>
       <div style={{width:"100%",maxWidth:400}}>
         <div style={{textAlign:"center",marginBottom:28}}>
-          <img src={LOGO} alt="La Rana Mecánica" style={{width:120,height:120,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.3)",objectFit:"cover",display:"block",margin:"0 auto 16px",boxShadow:"0 8px 32px rgba(0,0,0,0.4)"}}/>
+          <img src={LOGO} alt="logo" style={{width:120,height:120,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.3)",objectFit:"cover",display:"block",margin:"0 auto 16px",boxShadow:"0 8px 32px rgba(0,0,0,0.4)"}}/>
           <h1 style={{color:C.blanco,fontSize:22,fontWeight:700,marginBottom:6}}>Verifica tus datos</h1>
           <p style={{color:"rgba(255,255,255,0.6)",fontSize:14,lineHeight:1.5}}>Peña Levantinista La Rana Mecánica<br/>Temporada 2026/2027 · Rocafort-Godella</p>
         </div>
-
         <div style={{background:C.blanco,borderRadius:20,padding:"28px 24px",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
-          <p style={{color:C.gris,fontSize:14,marginBottom:20,lineHeight:1.6}}>
-            Accede con el teléfono registrado en la peña para ver y confirmar tus datos de esta temporada.
-          </p>
+          <p style={{color:C.gris,fontSize:14,marginBottom:20,lineHeight:1.6}}>Accede con el teléfono registrado para revisar y actualizar tus datos y consentimientos.</p>
           <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>Tu teléfono</label>
           <div style={{display:"flex",gap:8,marginBottom:12}}>
             <div style={{background:C.grisLight,border:`1.5px solid ${C.border}`,borderRadius:10,padding:"11px 13px",fontSize:15,color:C.gris,flexShrink:0}}>🇪🇸 +34</div>
@@ -240,23 +198,32 @@ function Login({onLogin, onMultiple}){
           </div>
           {error&&<div style={{marginBottom:12,padding:"10px 14px",background:C.rojoLight,borderRadius:10,fontSize:13,color:C.rojo,display:"flex",gap:8}}><span>⚠️</span><span>{error}</span></div>}
           <button onClick={buscar} disabled={loading} style={{width:"100%",padding:13,background:loading?"#bbb":C.granate,color:C.blanco,border:"none",borderRadius:10,fontWeight:700,fontSize:15,cursor:loading?"not-allowed":"pointer",fontFamily:"inherit"}}>
-            {loading?"Buscando...":"Acceder a mis datos →"}
+            {loading?"Buscando...":"Acceder →"}
           </button>
-          <p style={{marginTop:14,fontSize:12,color:C.muted,textAlign:"center",lineHeight:1.5}}>
-            Sin teléfono registrado: usa el código <strong>512512</strong>
-          </p>
+          <p style={{marginTop:14,fontSize:12,color:C.muted,textAlign:"center"}}>Sin teléfono: código <strong>512512</strong></p>
         </div>
       </div>
     </div>
   );
 }
 
-// ── MIS DATOS ─────────────────────────────────────────
-function MisDatos({socio, onLogout, onCorregir, onCambiarPerfil}){
-  const [confirmado,setConfirmado]=useState(false);
-  const [enviandoEmail, setEnviandoEmail] = useState(false);
-  const [consents,setConsents]=useState(()=>({
-    rgpd:              socio.rgpd===true,
+// ── FORMULARIO UNIFICADO ──────────────────────────────
+function FormularioUnificado({socio,onEnviado,onLogout,onCambiarPerfil,perfiles}){
+  const [form,setForm]=useState({
+    // Datos personales
+    nombre:    socio.nombre||"",
+    apellidos: socio.apellidos||"",
+    dni:       socio.dni||"",
+    fecha_nac: socio.fecha_nac?socio.fecha_nac.split("T")[0]:"",
+    email:     socio.email||"",
+    telefono:  socio.telefono==="512512"?"":socio.telefono||"",
+    // Levante
+    tiene_acciones: socio.tiene_acciones===true,
+    num_acciones:   socio.num_acciones||0,
+    es_abonado:     socio.es_abonado===true,
+    num_abonado:    socio.num_abonado||"",
+    // Consentimientos
+    rgpd:                  socio.rgpd===true,
     consent_foto_interna:  socio.consent_foto_interna===true,
     consent_foto_rrss:     socio.consent_foto_rrss===true,
     consent_foto_web:      socio.consent_foto_web===true,
@@ -264,197 +231,240 @@ function MisDatos({socio, onLogout, onCorregir, onCambiarPerfil}){
     consent_promo_pena:    socio.consent_promo_pena===true,
     consent_patrocinadores:socio.consent_patrocinadores===true,
     consent_whatsapp:      socio.consent_whatsapp===true,
-  }));
-  const setC=(k,v)=>setConsents(c=>({...c,[k]:v}));
+    comentarios: "",
+  });
+  const [enviando,setEnviando]=useState(false);
+  const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
 
-  const descargarPDF=(s)=>{
-    const htmlDoc = generarPDFHTML(s);
-    const ventana = window.open("","_blank");
-    if(ventana){
-      ventana.document.write(htmlDoc);
-      ventana.document.close();
-      setTimeout(()=>ventana.print(),500);
-    }
+  const hayCambiosDatos=()=>{
+    const campos=["nombre","apellidos","dni","fecha_nac","email","telefono"];
+    return campos.some(k=>{
+      const orig=String(socio[k]||"");
+      const nuevo=String(form[k]||"");
+      return nuevo && nuevo!==orig;
+    });
   };
 
-  const confirmar=async()=>{
-    setEnviandoEmail(true);
-    // Marcar como verificado en Supabase
+  const enviar=async()=>{
+    if(!form.rgpd){alert("El consentimiento de tratamiento de datos es obligatorio para ser socio.");return;}
+    setEnviando(true);
+
+    // 1. Guardar consentimientos y datos de Levante directamente
     await supabase.from("socios").update({
-      verificado:true,
+      verificado: true,
       fecha_consentimiento: new Date().toISOString(),
-      rgpd: consents.rgpd,
-      consent_foto_interna:   consents.consent_foto_interna,
-      consent_foto_rrss:      consents.consent_foto_rrss,
-      consent_foto_web:       consents.consent_foto_web,
-      consent_foto_levante:   consents.consent_foto_levante,
-      consent_promo_pena:     consents.consent_promo_pena,
-      consent_patrocinadores: consents.consent_patrocinadores,
-      consent_whatsapp:       consents.consent_whatsapp,
+      rgpd:                  form.rgpd,
+      consent_foto_interna:  form.consent_foto_interna,
+      consent_foto_rrss:     form.consent_foto_rrss,
+      consent_foto_web:      form.consent_foto_web,
+      consent_foto_levante:  form.consent_foto_levante,
+      consent_promo_pena:    form.consent_promo_pena,
+      consent_patrocinadores:form.consent_patrocinadores,
+      consent_whatsapp:      form.consent_whatsapp,
+      tiene_acciones: form.tiene_acciones,
+      num_acciones:   form.tiene_acciones?Number(form.num_acciones)||0:0,
+      es_abonado:     form.es_abonado,
+      num_abonado:    form.es_abonado?form.num_abonado:null,
     }).eq("id",socio.id);
-    // Actualizar el objeto socio local con los consentimientos
-    Object.assign(socio, consents);
 
-    // Generar HTML del documento
-    const htmlDoc = generarPDFHTML(socio);
+    // 2. Si hay cambios en datos personales → crear verificaciones pendientes
+    const camposDatos=["nombre","apellidos","dni","fecha_nac","email","telefono"];
+    const cambios=[];
+    for(const campo of camposDatos){
+      const orig=String(socio[campo]||"");
+      const nuevo=String(form[campo]||"");
+      if(nuevo && nuevo!==orig){
+        await supabase.from("verificaciones").insert({
+          socio_id:socio.id, campo,
+          valor_anterior:orig, valor_nuevo:nuevo,
+          comentario:form.comentarios, estado:"pendiente"
+        });
+        cambios.push({campo,orig,nuevo});
+      }
+    }
 
-    // Enviar email al peñista (si tiene email)
-    if(socio.email && socio.email !== "512512") {
+    // 3. Generar PDF con datos actuales + cambios propuestos
+    const socioPDF={...socio,...form};
+    const htmlDoc=generarPDFHTML(socioPDF);
+
+    // 4. Enviar email al peñista
+    const emailDest=form.email||socio.email;
+    if(emailDest){
+      const tieneCambios=cambios.length>0;
       await enviarEmail(
-        socio.email,
-        `✅ Verificación de datos - La Rana Mecánica - Temporada 2026/2027`,
-        `<h2>Hola ${socio.nombre},</h2>
-        <p>Has verificado correctamente tus datos en la Peña Levantinista La Rana Mecánica para la temporada 2026/2027.</p>
-        <p>Adjunto encontrarás tu ficha de socio con los consentimientos otorgados. <strong>Por favor, imprímela, fírmala y entrégala al Secretario de la Peña.</strong></p>
-        <hr/>
-        ${htmlDoc}`
+        emailDest,
+        `La Rana Mecánica · ${tieneCambios?"Solicitud de cambios":"Verificación"} — ${socio.nombre} ${socio.apellidos}`,
+        `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+          <div style="background:#8B0A3A;padding:20px;border-radius:8px;margin-bottom:20px;text-align:center;">
+            <h2 style="color:white;margin:0;">🐸 La Rana Mecánica</h2>
+            <p style="color:rgba(255,255,255,0.8);margin:6px 0 0;">${tieneCambios?"Solicitud de cambios recibida":"Datos verificados correctamente"}</p>
+          </div>
+          <p>Hola <strong>${socio.nombre}</strong>,</p>
+          ${tieneCambios
+            ?`<p>Hemos recibido tu solicitud de cambios en los siguientes datos: <strong>${cambios.map(c=>c.campo).join(", ")}</strong>. La junta los revisará y aplicará en breve.</p>
+               <div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:12px;margin:12px 0;">
+                 <strong>⚠️ Los cambios están pendientes de aprobación.</strong> Tus datos actuales no cambiarán hasta que la junta los apruebe.
+               </div>`
+            :`<p>Has verificado tus datos correctamente para la temporada 2026/2027. ¡Gracias!</p>`
+          }
+          <p>Adjunto encontrarás tu ficha con los datos y consentimientos actuales. Imprímela, fírmala y entrégala al Secretario.</p>
+          <p style="color:#64748b;font-size:13px;">Contacto: <a href="mailto:penyaranamecanica@gmail.com">penyaranamecanica@gmail.com</a></p>
+          <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
+          ${htmlDoc}
+        </div>`
       );
     }
 
-    // Enviar copia al secretario
-    await enviarEmail(
-      SECRETARIO_EMAIL,
-      `📋 Verificación completada: ${socio.nombre} ${socio.apellidos} (${socio.numero})`,
-      `<h2>Verificación completada</h2>
-      <p><strong>${socio.nombre} ${socio.apellidos}</strong> (${socio.numero}) ha verificado sus datos correctamente el ${new Date().toLocaleString("es-ES")}.</p>
-      <hr/>
-      ${htmlDoc}`
-    );
+    // 5. Enviar copia a la junta si hay cambios en datos
+    if(cambios.length>0){
+      await enviarEmail(
+        SECRETARIO_EMAIL,
+        `[CAMBIOS] ${socio.nombre} ${socio.apellidos} (${socio.numero}) ha solicitado modificaciones`,
+        `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+          <div style="background:#003DA5;padding:16px;border-radius:8px;margin-bottom:16px;">
+            <h3 style="color:white;margin:0;">📥 Cambios pendientes de aprobación</h3>
+          </div>
+          <p><strong>${socio.nombre} ${socio.apellidos}</strong> (${socio.numero}) ha solicitado los siguientes cambios:</p>
+          <table style="width:100%;border-collapse:collapse;margin:12px 0;">
+            ${cambios.map(c=>`<tr><td style="padding:7px 12px;border:1px solid #e2e8f0;font-weight:600;">${c.campo}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;color:#c0392b;">${c.orig||"(vacío)"}</td><td style="padding:7px 12px;border:1px solid #e2e8f0;">→</td><td style="padding:7px 12px;border:1px solid #e2e8f0;color:#1a7a3c;font-weight:600;">${c.nuevo}</td></tr>`).join("")}
+          </table>
+          <a href="https://reylagarto90.github.io/rana-mecanica/#/junta/login"
+             style="display:inline-block;background:#C0185A;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:700;margin:12px 0;">
+            Ir al panel de la junta →
+          </a>
+          <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
+          ${htmlDoc}
+        </div>`
+      );
+    }
 
-    setEnviandoEmail(false);
-    setConfirmado(true);
+    setEnviando(false);
+    onEnviado({socio:socioPDF,hayCambios:cambios.length>0,htmlDoc});
   };
-
-  const vacios=[];
-  if(!socio.dni) vacios.push("DNI / NIE");
-  if(!socio.email) vacios.push("Email");
-  if(!socio.fecha_nac) vacios.push("Fecha de nacimiento");
-
-  if(confirmado) return(
-    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.granateDark} 0%,#5a0020 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"system-ui,sans-serif"}}>
-      <div style={{background:C.blanco,borderRadius:20,padding:"36px 28px",maxWidth:400,width:"100%",textAlign:"center"}}>
-        <div style={{fontSize:52,marginBottom:12}}>✅</div>
-        <h2 style={{color:C.verde,fontSize:22,fontWeight:700,marginBottom:10}}>¡Datos confirmados!</h2>
-        <p style={{color:C.gris,fontSize:14,marginBottom:16,lineHeight:1.6}}>Gracias <strong>{socio.nombre}</strong>. La junta ha recibido tu confirmación para la temporada 2026/2027.</p>
-        {socio.email&&<div style={{background:C.azulLight,borderRadius:10,padding:"12px",marginBottom:12,fontSize:13,color:C.azul}}>
-          📧 Te hemos enviado un email a <strong>{socio.email}</strong> con tu ficha de socio. Imprímela, fírmala y entrégala al Secretario.
-        </div>}
-        <div style={{background:C.oroLight,borderRadius:10,padding:"12px",marginBottom:16,fontSize:13,color:"#7a5c00"}}>
-          📋 También hemos enviado una copia a la junta directiva.
-        </div>
-        <div style={{background:C.granateLight,borderRadius:10,padding:"12px",marginBottom:16,fontSize:14,color:C.granateDark,fontWeight:600}}>🐸 ¡Visca el Levante i la Rana Mecànica!</div>
-        <button onClick={()=>descargarPDF(socio)} style={{width:"100%",padding:13,background:C.azul,color:C.blanco,border:"none",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,fontFamily:"inherit",marginBottom:10}}>
-          📄 Descargar mi ficha en PDF
-        </button>
-        <p style={{fontSize:11,color:C.muted,marginBottom:14,lineHeight:1.5}}>Imprímela, fírmala y entrégala al Secretario de la peña.</p>
-        <button onClick={onLogout} style={{width:"100%",padding:11,background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:10,cursor:"pointer",fontWeight:600,color:C.gris,fontFamily:"inherit"}}>Cerrar sesión</button>
-      </div>
-    </div>
-  );
 
   return(
     <div style={{minHeight:"100vh",background:"#f5f5f5",fontFamily:"system-ui,sans-serif"}}>
-      <div style={{background:C.granateDark,padding:"14px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+      {/* HEADER */}
+      <div style={{background:C.granateDark,padding:"13px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <img src={LOGO} alt="logo" style={{width:36,height:36,borderRadius:"50%",objectFit:"cover"}}/>
+          <img src={LOGO} alt="logo" style={{width:34,height:34,borderRadius:"50%",objectFit:"cover"}}/>
           <div>
-            <div style={{color:C.blanco,fontWeight:700,fontSize:14}}>La Rana Mecánica</div>
-            <div style={{color:"rgba(255,255,255,0.5)",fontSize:11}}>Temporada 2026/2027</div>
+            <div style={{color:C.blanco,fontWeight:700,fontSize:13}}>La Rana Mecánica</div>
+            <div style={{color:"rgba(255,255,255,0.5)",fontSize:10}}>
+              {socio.tipo==="infantil"?`Perfil de ${socio.nombre} (tutor/a)`:`${socio.nombre} · ${socio.numero}`}
+            </div>
           </div>
         </div>
         <div style={{display:"flex",gap:8}}>
-          {onCambiarPerfil&&<button onClick={onCambiarPerfil} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:C.blanco,borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>👥 Cambiar</button>}
-          <button onClick={onLogout} style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.2)",color:C.blanco,borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>Salir</button>
+          {perfiles&&perfiles.length>1&&(
+            <button onClick={onCambiarPerfil} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:C.blanco,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>👥 Cambiar</button>
+          )}
+          <button onClick={onLogout} style={{background:"rgba(255,255,255,0.12)",border:"1px solid rgba(255,255,255,0.2)",color:C.blanco,borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>Salir</button>
         </div>
       </div>
 
-      <div style={{maxWidth:480,margin:"0 auto",padding:"20px 16px"}}>
-        <div style={{background:C.blanco,borderRadius:16,padding:"20px",marginBottom:14,boxShadow:"0 2px 12px rgba(0,0,0,0.08)",borderTop:`4px solid ${C.granate}`}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
-            <div>
-              <h2 style={{fontSize:20,fontWeight:700,color:C.text,marginBottom:2}}>
-                {socio.tipo==="infantil"?`Panel de ${socio.nombre} 👶`:`Hola, ${socio.nombre} 👋`}
-              </h2>
-              <p style={{color:C.muted,fontSize:13}}>
-                {socio.tipo==="infantil"?"Acceso gestionado por el tutor/a":"Revisa que tus datos son correctos"}
-              </p>
-            </div>
-            <div style={{background:C.granateLight,borderRadius:10,padding:"8px 12px",textAlign:"center"}}>
-              <div style={{fontSize:10,color:C.granate,fontWeight:700,textTransform:"uppercase",letterSpacing:0.5}}>Nº Socio</div>
-              <div style={{fontFamily:"monospace",fontWeight:800,color:C.granateDark,fontSize:14}}>{socio.numero}</div>
-            </div>
-          </div>
-        </div>
+      <div style={{maxWidth:520,margin:"0 auto",padding:"20px 16px 40px"}}>
 
+        {/* Aviso menor */}
         {socio.tipo==="infantil"&&(
-          <div style={{background:C.azulLight,border:`1px solid ${C.azul}30`,borderRadius:12,padding:"11px 14px",marginBottom:12,fontSize:13,color:C.azul,display:"flex",gap:8,alignItems:"center"}}>
-            <span>ℹ️</span><span>Este perfil pertenece a <strong>{socio.nombre}</strong> (menor de edad). Estás accediendo como su tutor/a.</span>
+          <div style={{background:C.azulLight,border:`1px solid ${C.azul}30`,borderRadius:12,padding:"11px 14px",marginBottom:14,fontSize:13,color:C.azul,display:"flex",gap:8}}>
+            <span>ℹ️</span><span>Estás gestionando el perfil de <strong>{socio.nombre}</strong> (menor de edad) como tutor/a.</span>
           </div>
         )}
 
-        {vacios.length>0&&(
-          <div style={{background:C.oroLight,border:`1px solid ${C.oro}50`,borderRadius:12,padding:"12px 16px",marginBottom:14,display:"flex",gap:10,alignItems:"flex-start"}}>
-            <span style={{fontSize:18}}>⚠️</span>
-            <div>
-              <div style={{fontWeight:600,color:C.oro,fontSize:13,marginBottom:2}}>Datos incompletos</div>
-              <div style={{fontSize:13,color:"#7a5c00"}}>Faltan: <strong>{vacios.join(", ")}</strong></div>
+        <div style={{background:C.blanco,borderRadius:16,padding:"20px",marginBottom:14,boxShadow:"0 2px 12px rgba(0,0,0,0.08)",borderTop:`4px solid ${C.granate}`}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <h2 style={{fontSize:18,fontWeight:700,color:C.granateDark}}>
+              {socio.tipo==="infantil"?`Datos de ${socio.nombre}`:"Mis datos"}
+            </h2>
+            <div style={{background:C.granateLight,borderRadius:10,padding:"6px 12px",textAlign:"center"}}>
+              <div style={{fontSize:9,color:C.granate,fontWeight:700,textTransform:"uppercase"}}>Nº Socio</div>
+              <div style={{fontFamily:"monospace",fontWeight:800,color:C.granateDark,fontSize:13}}>{socio.numero}</div>
             </div>
           </div>
-        )}
+          <p style={{fontSize:13,color:C.muted,marginBottom:16}}>Revisa y actualiza tus datos y consentimientos. Los cambios en datos personales serán revisados por la junta antes de aplicarse.</p>
 
-        <div style={{background:C.blanco,borderRadius:16,padding:"20px",marginBottom:14,boxShadow:"0 2px 12px rgba(0,0,0,0.08)"}}>
-          <h3 style={{fontSize:14,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:14}}>
-            {socio.tipo==="infantil"?"Datos del menor":"Tus datos en la peña"}
-          </h3>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          {/* DATOS PERSONALES */}
+          <div style={{fontSize:12,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>Datos personales</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 12px"}}>
             {[
-              ["Nombre",socio.nombre],
-              ["Apellidos",socio.apellidos],
-              ["DNI / NIE",socio.dni||"—"],
-              ["Fecha nac.",fmtFecha(socio.fecha_nac)],
-              ["Teléfono",socio.telefono==="512512"?"(pendiente)":socio.telefono||"—"],
-              ["Email",socio.email||"—"],
-              ["Tipo",socio.tipo],
-              ["Cargo",socio.cargo],
-              ["Acciones Levante",socio.tiene_acciones?(socio.num_acciones||1)+" acción/es":"No"],
-              ["Nº Abonado",socio.es_abonado?(socio.num_abonado||"Sí"):"No abonado/a"],
-            ].map(([k,v])=>(
-              <div key={k} style={{padding:"10px 12px",background:C.grisLight,borderRadius:10}}>
-                <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:0.5,marginBottom:3,fontWeight:600}}>{k}</div>
-                <div style={{fontSize:14,fontWeight:600,color:v==="—"?C.muted:C.text,wordBreak:"break-word",textTransform:"capitalize"}}>{v}</div>
+              {l:"Nombre",k:"nombre"},
+              {l:"Apellidos",k:"apellidos"},
+              {l:"DNI / NIE",k:"dni"},
+              {l:"Fecha nacimiento",k:"fecha_nac",t:"date"},
+              {l:"Teléfono",k:"telefono",t:"tel"},
+              {l:"Email",k:"email",t:"email"},
+            ].map(f=>(
+              <div key={f.k} style={{marginBottom:12}}>
+                <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:4,textTransform:"uppercase",letterSpacing:0.4}}>{f.l}</label>
+                <input type={f.t||"text"} value={form[f.k]} onChange={e=>setF(f.k,e.target.value)}
+                  style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${form[f.k]&&form[f.k]!==String(socio[f.k]||"")?C.azul:C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                {form[f.k]&&form[f.k]!==String(socio[f.k]||"")&&(
+                  <div style={{fontSize:10,color:C.azul,marginTop:2}}>✏️ Cambio pendiente de aprobación</div>
+                )}
               </div>
             ))}
           </div>
-        </div>
 
-        {/* ── CONSENTIMIENTOS ── */}
-        <div style={{background:C.blanco,borderRadius:16,padding:"20px",marginBottom:14,boxShadow:"0 2px 12px rgba(0,0,0,0.08)"}}>
-          <h3 style={{fontSize:14,fontWeight:700,color:C.granateDark,marginBottom:4}}>📋 Consentimientos</h3>
-          <p style={{fontSize:12,color:C.muted,marginBottom:14}}>Revisa y marca tus preferencias. Puedes cambiarlas en cualquier momento.</p>
+          {/* LEVANTE */}
+          <div style={{fontSize:12,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,margin:"14px 0 10px"}}>Vinculación con el Levante UD</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 12px",marginBottom:4}}>
+            <div>
+              <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>¿Tienes acciones?</label>
+              <div style={{display:"flex",gap:8}}>
+                {[{v:true,l:"Sí"},{v:false,l:"No"}].map(o=>(
+                  <button key={String(o.v)} onClick={()=>setF("tiene_acciones",o.v)} style={{flex:1,padding:"8px",borderRadius:8,border:`2px solid ${form.tiene_acciones===o.v?C.granate:C.border}`,background:form.tiene_acciones===o.v?C.granateLight:C.blanco,cursor:"pointer",fontWeight:600,fontSize:13,fontFamily:"inherit",color:form.tiene_acciones===o.v?C.granateDark:C.gris}}>{o.l}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>¿Cuántas acciones?</label>
+              <input type="number" min="0" value={form.num_acciones||""} onChange={e=>setF("num_acciones",e.target.value)}
+                disabled={!form.tiene_acciones} placeholder="0"
+                style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",opacity:form.tiene_acciones?1:0.4}}/>
+            </div>
+            <div style={{marginTop:12}}>
+              <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>¿Eres abonado/a?</label>
+              <div style={{display:"flex",gap:8}}>
+                {[{v:true,l:"Sí"},{v:false,l:"No"}].map(o=>(
+                  <button key={String(o.v)} onClick={()=>setF("es_abonado",o.v)} style={{flex:1,padding:"8px",borderRadius:8,border:`2px solid ${form.es_abonado===o.v?C.azul:C.border}`,background:form.es_abonado===o.v?C.azulLight:C.blanco,cursor:"pointer",fontWeight:600,fontSize:13,fontFamily:"inherit",color:form.es_abonado===o.v?C.azul:C.gris}}>{o.l}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{marginTop:12}}>
+              <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Nº de abonado</label>
+              <input type="text" value={form.num_abonado||""} onChange={e=>setF("num_abonado",e.target.value)}
+                disabled={!form.es_abonado} placeholder="12345"
+                style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",opacity:form.es_abonado?1:0.4}}/>
+            </div>
+          </div>
+
+          {/* CONSENTIMIENTOS */}
+          <div style={{fontSize:12,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,margin:"18px 0 10px"}}>Consentimientos RGPD</div>
 
           {/* Obligatorio */}
-          <div style={{background:consents.rgpd?C.verdeLight:"#fff8e1",border:`2px solid ${consents.rgpd?C.verde:"#f59e0b"}`,borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+          <div style={{background:form.rgpd?C.verdeLight:"#fff8e1",border:`2px solid ${form.rgpd?C.verde:"#f59e0b"}`,borderRadius:10,padding:"12px 14px",marginBottom:12}}>
             <label style={{display:"flex",gap:10,cursor:"pointer",alignItems:"flex-start"}}>
-              <input type="checkbox" checked={consents.rgpd} onChange={e=>setC("rgpd",e.target.checked)}
+              <input type="checkbox" checked={form.rgpd} onChange={e=>setF("rgpd",e.target.checked)}
                 style={{marginTop:2,width:18,height:18,accentColor:C.verde,flexShrink:0}}/>
               <span style={{fontSize:13,color:C.text,lineHeight:1.5}}>
-                <strong>Consiento el tratamiento de mis datos</strong> para la gestión de la relación asociativa: altas/bajas, cuotas, actividades, comunicaciones operativas y obligaciones legales. <em style={{color:C.rojo}}>*Obligatorio para ser socio.</em>
+                <strong>Consiento el tratamiento de mis datos</strong> para gestión asociativa: altas/bajas, cuotas, actividades, comunicaciones y obligaciones legales. Los datos podrán comunicarse a Levante UD, Federación de Peñas, AAPP, entidades bancarias y aseguradoras cuando sea necesario. <em style={{color:C.rojo}}>*Obligatorio.</em>
               </span>
             </label>
           </div>
 
           {/* Imagen */}
           <div style={{background:C.azulLight,border:`1px solid ${C.azul}30`,borderRadius:10,padding:"12px 14px",marginBottom:12}}>
-            <div style={{fontSize:11,fontWeight:700,color:C.azul,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>📸 Autorización de imagen (opcional)</div>
+            <div style={{fontSize:11,fontWeight:700,color:C.azul,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>📸 Autorización de imagen (opcional)</div>
             <p style={{fontSize:11,color:C.gris,marginBottom:10,fontStyle:"italic"}}>Negarse no impide ser socio ni participar en las actividades.</p>
             {[
-              ["consent_foto_interna", "Fotografías/vídeos para comunicación interna de la Peña."],
-              ["consent_foto_rrss",    "Publicación en redes sociales oficiales de la Peña."],
-              ["consent_foto_web",     "Publicación en web y materiales promocionales."],
-              ["consent_foto_levante", "Cesión de imágenes al Levante UD / Federación de Peñas."],
+              ["consent_foto_interna","Fotografías/vídeos para comunicación interna de la Peña."],
+              ["consent_foto_rrss",   "Publicación en redes sociales oficiales de la Peña."],
+              ["consent_foto_web",    "Publicación en web y materiales promocionales."],
+              ["consent_foto_levante","Cesión de imágenes al Levante UD / Federación de Peñas."],
             ].map(([k,l])=>(
               <label key={k} style={{display:"flex",gap:10,cursor:"pointer",padding:"6px 0",borderBottom:`1px solid ${C.border}`,alignItems:"flex-start"}}>
-                <input type="checkbox" checked={consents[k]} onChange={e=>setC(k,e.target.checked)}
+                <input type="checkbox" checked={form[k]} onChange={e=>setF(k,e.target.checked)}
                   style={{marginTop:2,width:16,height:16,accentColor:C.azul,flexShrink:0}}/>
                 <span style={{fontSize:13,color:C.text,lineHeight:1.4}}>{l}</span>
               </label>
@@ -462,215 +472,31 @@ function MisDatos({socio, onLogout, onCorregir, onCambiarPerfil}){
           </div>
 
           {/* Comunicaciones */}
-          <div style={{background:C.granateLight,border:`1px solid ${C.granate}30`,borderRadius:10,padding:"12px 14px"}}>
+          <div style={{background:C.granateLight,border:`1px solid ${C.granate}30`,borderRadius:10,padding:"12px 14px",marginBottom:14}}>
             <div style={{fontSize:11,fontWeight:700,color:C.granate,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>📢 Comunicaciones (opcional)</div>
             {[
-              ["consent_promo_pena",       "Comunicaciones promocionales propias de la Peña."],
-              ["consent_patrocinadores",   "Información de patrocinadores enviada por la Peña (sin ceder mis datos)."],
-              ["consent_whatsapp",          "Incorporarme al grupo de WhatsApp de La Rana Mecánica."],
+              ["consent_promo_pena",      "Comunicaciones promocionales propias de la Peña."],
+              ["consent_patrocinadores",  "Información de patrocinadores enviada por la Peña (sin ceder mis datos)."],
+              ["consent_whatsapp",         "Incorporarme al grupo de WhatsApp de La Rana Mecánica."],
             ].map(([k,l])=>(
               <label key={k} style={{display:"flex",gap:10,cursor:"pointer",padding:"6px 0",borderBottom:`1px solid ${C.border}`,alignItems:"flex-start"}}>
-                <input type="checkbox" checked={consents[k]} onChange={e=>setC(k,e.target.checked)}
+                <input type="checkbox" checked={form[k]} onChange={e=>setF(k,e.target.checked)}
                   style={{marginTop:2,width:16,height:16,accentColor:C.granate,flexShrink:0}}/>
                 <span style={{fontSize:13,color:C.text,lineHeight:1.4}}>{l}</span>
               </label>
             ))}
           </div>
-        </div>
 
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <button onClick={confirmar} disabled={enviandoEmail} style={{padding:15,background:enviandoEmail?"#aaa":C.verde,color:C.blanco,border:"none",borderRadius:12,fontWeight:700,fontSize:15,cursor:enviandoEmail?"not-allowed":"pointer",fontFamily:"inherit"}}>
-            {enviandoEmail?"📨 Enviando documentación...":"✅ "+(socio.tipo==="infantil"?"Los datos del menor son correctos":"Mis datos son correctos — Confirmar")}
-          </button>
-          <button onClick={onCorregir} style={{padding:13,background:C.blanco,color:C.granate,border:`2px solid ${C.granate}`,borderRadius:12,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>
-            ✏️ Hay algún dato incorrecto — Solicitar corrección
-          </button>
-        </div>
-        <p style={{textAlign:"center",fontSize:12,color:C.muted,marginTop:14,lineHeight:1.5}}>Las correcciones serán revisadas por la junta antes de aplicarse.</p>
-      </div>
-    </div>
-  );
-}
-
-// ── SOLICITAR CORRECCIÓN ──────────────────────────────
-function SolicitarCorreccion({socio, onVolver, onEnviado}){
-  const [form,setForm]=useState({
-    nombre:socio.nombre, apellidos:socio.apellidos,
-    dni:socio.dni||"", fecha_nac:socio.fecha_nac?socio.fecha_nac.split("T")[0]:"",
-    email:socio.email||"", telefono:socio.telefono==="512512"?"":socio.telefono||"",
-    tiene_acciones:socio.tiene_acciones||false,
-    num_acciones:socio.num_acciones||0,
-    es_abonado:socio.es_abonado||false,
-    num_abonado:socio.num_abonado||"",
-    comentarios:"",
-  });
-  const [enviando,setEnviando]=useState(false);
-  const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
-
-  const enviar=async()=>{
-    setEnviando(true);
-    // Detectar cambios de texto y guardar en verificaciones
-    const campos = ["nombre","apellidos","dni","fecha_nac","email","telefono"];
-    for(const campo of campos){
-      const original = socio[campo]||"";
-      const nuevo = form[campo]||"";
-      if(nuevo && nuevo!==original){
-        await supabase.from("verificaciones").insert({
-          socio_id: socio.id,
-          campo,
-          valor_anterior: String(original),
-          valor_nuevo: String(nuevo),
-          comentario: form.comentarios,
-          estado: "pendiente"
-        });
-      }
-    }
-    // Guardar campos de acciones y abono directamente (no necesitan aprobación)
-    await supabase.from("socios").update({
-      tiene_acciones: form.tiene_acciones,
-      num_acciones: form.tiene_acciones ? Number(form.num_acciones)||0 : 0,
-      es_abonado: form.es_abonado,
-      num_abonado: form.es_abonado ? form.num_abonado : null,
-    }).eq("id", socio.id);
-
-    // Generar PDF con datos propuestos (mezcla de datos actuales + cambios solicitados)
-    const socioConCambios = {
-      ...socio,
-      nombre:    form.nombre    || socio.nombre,
-      apellidos: form.apellidos || socio.apellidos,
-      dni:       form.dni       || socio.dni,
-      fecha_nac: form.fecha_nac || socio.fecha_nac,
-      email:     form.email     || socio.email,
-      telefono:  form.telefono  || socio.telefono,
-      tiene_acciones: form.tiene_acciones,
-      num_acciones:   form.num_acciones,
-      es_abonado:     form.es_abonado,
-      num_abonado:    form.num_abonado,
-      _es_correccion: true, // flag para el PDF
-    };
-    const htmlDoc = generarPDFHTML(socioConCambios);
-
-    // Enviar email al peñista con el PDF de corrección
-    if(socio.email || form.email){
-      const emailDest = form.email || socio.email;
-      await enviarEmail(
-        emailDest,
-        `La Rana Mecánica · Solicitud de corrección de datos — ${socio.nombre} ${socio.apellidos}`,
-        `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-          <div style="background:#8B0A3A;padding:20px;border-radius:8px;margin-bottom:20px;text-align:center;">
-            <h2 style="color:white;margin:0;">🐸 La Rana Mecánica</h2>
-            <p style="color:rgba(255,255,255,0.8);margin:6px 0 0;">Solicitud de corrección de datos recibida</p>
-          </div>
-          <p>Hola <strong>${socio.nombre}</strong>,</p>
-          <p>Hemos recibido tu solicitud de corrección de datos. La junta directiva la revisará y aplicará los cambios en breve.</p>
-          <div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:14px;margin:16px 0;">
-            <strong>⚠️ Importante:</strong> Los cambios solicitados están pendientes de aprobación. 
-            Tus datos actuales en la peña no cambiarán hasta que la junta los apruebe.
-          </div>
-          <p>Adjunto encontrarás tu ficha con los datos propuestos. Una vez aprobados por la junta, 
-          recibirás confirmación y podrás imprimir la ficha definitiva.</p>
-          <p style="color:#64748b;font-size:13px;">Para cualquier consulta: <a href="mailto:penyaranamecanica@gmail.com">penyaranamecanica@gmail.com</a></p>
-          <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
-          ${htmlDoc}
-        </div>`
-      );
-    }
-
-    // Enviar copia a la junta
-    await enviarEmail(
-      "penyaranamecanica@gmail.com",
-      `[CORRECCIÓN] ${socio.nombre} ${socio.apellidos} (${socio.numero}) ha solicitado cambios en sus datos`,
-      `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
-        <div style="background:#003DA5;padding:16px;border-radius:8px;margin-bottom:16px;">
-          <h3 style="color:white;margin:0;">📥 Nueva solicitud de corrección</h3>
-        </div>
-        <p><strong>${socio.nombre} ${socio.apellidos}</strong> (${socio.numero}) ha solicitado cambios en sus datos.</p>
-        <p>Accede al panel de la junta para revisar y aprobar los cambios:</p>
-        <a href="https://reylagarto90.github.io/rana-mecanica/#/junta/login" 
-           style="display:inline-block;background:#C0185A;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:700;">
-          Ir al panel de la junta →
-        </a>
-        <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
-        ${htmlDoc}
-      </div>`
-    );
-
-    setEnviando(false);
-    onEnviado();
-  };
-
-  const campo=(label,key,type="text",ph="")=>(
-    <div style={{marginBottom:14}}>
-      <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>{label}</label>
-      <input type={type} value={form[key]} onChange={e=>setF(key,e.target.value)} placeholder={ph}
-        style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:15,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
-      {form[key]!==(socio[key]||"")&&form[key]!==""&&(
-        <div style={{fontSize:11,color:C.azul,marginTop:3}}>✏️ Antes: <em>{socio[key]||"(vacío)"}</em></div>
-      )}
-    </div>
-  );
-
-  return(
-    <div style={{minHeight:"100vh",background:"#f5f5f5",fontFamily:"system-ui,sans-serif"}}>
-      <div style={{background:C.granateDark,padding:"14px 20px",display:"flex",alignItems:"center",gap:12}}>
-        <button onClick={onVolver} style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.2)",color:C.blanco,borderRadius:8,padding:"6px 12px",cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>← Volver</button>
-        <div style={{color:C.blanco,fontWeight:700,fontSize:14}}>Solicitar corrección</div>
-      </div>
-      <div style={{maxWidth:480,margin:"0 auto",padding:"20px 16px"}}>
-        <div style={{background:"#e8f4fd",border:"1px solid #b3d4f0",borderRadius:12,padding:"12px 16px",marginBottom:16,fontSize:13,color:"#1a5276",display:"flex",gap:8}}>
-          <span>ℹ️</span><span>Modifica solo los campos incorrectos. La junta los revisará y aplicará los cambios.</span>
-        </div>
-        <div style={{background:C.blanco,borderRadius:16,padding:"22px",boxShadow:"0 2px 12px rgba(0,0,0,0.08)",marginBottom:14}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px"}}>
-            {campo("Nombre","nombre")}
-            {campo("Apellidos","apellidos")}
-            {campo("DNI / NIE","dni","text","12345678A")}
-            {campo("Fecha de nacimiento","fecha_nac","date")}
-            {campo("Teléfono","telefono","tel","6XX XXX XXX")}
-          </div>
-          {campo("Email","email","email","tu@email.com")}
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px",marginBottom:14}}>
-            <div>
-              <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>¿Tienes acciones del Levante?</label>
-              <div style={{display:"flex",gap:8}}>
-                {[{v:true,l:"Sí"},{v:false,l:"No"}].map(o=>(
-                  <button key={String(o.v)} onClick={()=>setF("tiene_acciones",o.v)} style={{flex:1,padding:"9px",borderRadius:8,border:`2px solid ${form.tiene_acciones===o.v?C.granate:C.border}`,background:form.tiene_acciones===o.v?C.granateLight:C.blanco,cursor:"pointer",fontWeight:600,fontSize:13,fontFamily:"inherit",color:form.tiene_acciones===o.v?C.granateDark:C.gris}}>{o.l}</button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>¿Cuántas acciones?</label>
-              <input type="number" min="0" value={form.num_acciones||""} onChange={e=>setF("num_acciones",e.target.value)}
-                disabled={!form.tiene_acciones}
-                placeholder="0"
-                style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:15,outline:"none",fontFamily:"inherit",boxSizing:"border-box",opacity:form.tiene_acciones?1:0.4}}/>
-            </div>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px",marginBottom:14}}>
-            <div>
-              <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>¿Eres abonado/a?</label>
-              <div style={{display:"flex",gap:8}}>
-                {[{v:true,l:"Sí"},{v:false,l:"No"}].map(o=>(
-                  <button key={String(o.v)} onClick={()=>setF("es_abonado",o.v)} style={{flex:1,padding:"9px",borderRadius:8,border:`2px solid ${form.es_abonado===o.v?C.azul:C.border}`,background:form.es_abonado===o.v?C.azulLight:C.blanco,cursor:"pointer",fontWeight:600,fontSize:13,fontFamily:"inherit",color:form.es_abonado===o.v?C.azul:C.gris}}>{o.l}</button>
-                ))}
-              </div>
-            </div>
-            <div>
-              <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Nº de abonado</label>
-              <input type="text" value={form.num_abonado||""} onChange={e=>setF("num_abonado",e.target.value)}
-                disabled={!form.es_abonado}
-                placeholder="12345"
-                style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:15,outline:"none",fontFamily:"inherit",boxSizing:"border-box",opacity:form.es_abonado?1:0.4}}/>
-            </div>
-          </div>
+          {/* Comentarios */}
           <div style={{marginBottom:16}}>
-            <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Comentarios</label>
-            <textarea value={form.comentarios} onChange={e=>setF("comentarios",e.target.value)} rows={3}
-              placeholder="Qué datos son incorrectos y por qué..."
-              style={{width:"100%",padding:"11px 14px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
+            <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.4}}>Comentarios adicionales (opcional)</label>
+            <textarea value={form.comentarios} onChange={e=>setF("comentarios",e.target.value)} rows={2}
+              placeholder="Cualquier aclaración sobre los cambios solicitados..."
+              style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,outline:"none",fontFamily:"inherit",resize:"vertical",boxSizing:"border-box"}}/>
           </div>
-          <button onClick={enviar} disabled={enviando} style={{width:"100%",padding:13,background:enviando?"#bbb":C.granate,color:C.blanco,border:"none",borderRadius:10,fontWeight:700,fontSize:15,cursor:enviando?"not-allowed":"pointer",fontFamily:"inherit"}}>
-            {enviando?"Enviando...":"📨 Enviar solicitud de corrección"}
+
+          <button onClick={enviar} disabled={enviando} style={{width:"100%",padding:15,background:enviando?"#bbb":C.granate,color:C.blanco,border:"none",borderRadius:12,fontWeight:700,fontSize:15,cursor:enviando?"not-allowed":"pointer",fontFamily:"inherit"}}>
+            {enviando?"⏳ Guardando y enviando documentación...":"✅ Guardar y enviar mi ficha"}
           </button>
         </div>
       </div>
@@ -678,35 +504,35 @@ function SolicitarCorreccion({socio, onVolver, onEnviado}){
   );
 }
 
-// ── CORRECCIÓN ENVIADA ────────────────────────────────
-function Enviado({socio, onLogout, descargarPDF}){
+// ── CONFIRMACIÓN FINAL ────────────────────────────────
+function Confirmacion({socio,hayCambios,htmlDoc,onLogout}){
+  const descargar=()=>{
+    const v=window.open("","_blank");
+    if(v){v.document.write(htmlDoc);v.document.close();setTimeout(()=>v.print(),500);}
+  };
   return(
     <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.granateDark} 0%,#5a0020 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"system-ui,sans-serif"}}>
       <div style={{background:C.blanco,borderRadius:20,padding:"36px 28px",maxWidth:440,width:"100%",textAlign:"center"}}>
-        <div style={{fontSize:52,marginBottom:12}}>📨</div>
-        <h2 style={{color:C.azul,fontSize:22,fontWeight:700,marginBottom:10}}>¡Solicitud enviada!</h2>
+        <div style={{fontSize:52,marginBottom:12}}>{hayCambios?"📨":"✅"}</div>
+        <h2 style={{color:hayCambios?C.azul:C.verde,fontSize:22,fontWeight:700,marginBottom:10}}>
+          {hayCambios?"¡Solicitud enviada!":"¡Datos verificados!"}
+        </h2>
         <p style={{color:C.gris,fontSize:14,marginBottom:16,lineHeight:1.6}}>
-          <strong>{socio.nombre}</strong>, hemos recibido tu solicitud de corrección.
+          {hayCambios
+            ?`Gracias ${socio.nombre}. Tus cambios han sido enviados a la junta para revisión. Los consentimientos se han guardado correctamente.`
+            :`Gracias ${socio.nombre}. Tus datos y consentimientos han sido guardados correctamente para la temporada 2026/2027.`
+          }
         </p>
-        <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
-          {socio.email&&(
-            <div style={{background:C.azulLight,borderRadius:10,padding:"11px 14px",fontSize:13,color:C.azul,textAlign:"left"}}>
-              📧 Te hemos enviado un email a <strong>{socio.email}</strong> con tu ficha y los cambios solicitados.
-            </div>
-          )}
-          <div style={{background:C.oroLight,borderRadius:10,padding:"11px 14px",fontSize:13,color:"#7a5c00",textAlign:"left"}}>
-            ⏳ Los cambios están <strong>pendientes de aprobación</strong> por la junta directiva. Te avisarán cuando estén aplicados.
-          </div>
-          <div style={{background:C.granateLight,borderRadius:10,padding:"11px 14px",fontSize:13,color:C.granateDark,textAlign:"left"}}>
-            📋 La junta ha recibido copia de tu solicitud y la revisará en breve.
-          </div>
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+          {socio.email&&<div style={{background:C.azulLight,borderRadius:10,padding:"10px 14px",fontSize:13,color:C.azul,textAlign:"left"}}>📧 Hemos enviado tu ficha a <strong>{socio.email}</strong></div>}
+          {hayCambios&&<div style={{background:C.oroLight,borderRadius:10,padding:"10px 14px",fontSize:13,color:"#7a5c00",textAlign:"left"}}>⏳ Los cambios en datos personales están <strong>pendientes de aprobación</strong> por la junta.</div>}
+          <div style={{background:C.granateLight,borderRadius:10,padding:"10px 14px",fontSize:13,color:C.granateDark,textAlign:"left"}}>📋 La junta ha recibido copia de tu ficha.</div>
         </div>
-        <button onClick={()=>descargarPDF({...socio})} style={{width:"100%",padding:12,background:C.azul,color:C.blanco,border:"none",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,fontFamily:"inherit",marginBottom:10}}>
-          📄 Descargar mi ficha (datos propuestos)
+        <button onClick={descargar} style={{width:"100%",padding:13,background:C.azul,color:C.blanco,border:"none",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,fontFamily:"inherit",marginBottom:10}}>
+          📄 Descargar mi ficha en PDF
         </button>
-        <p style={{fontSize:11,color:C.muted,marginBottom:14,lineHeight:1.5}}>
-          Esta ficha refleja los cambios solicitados. Una vez aprobados por la junta, imprime la ficha definitiva.
-        </p>
+        <p style={{fontSize:11,color:C.muted,marginBottom:14,lineHeight:1.5}}>Imprímela, fírmala y entrégala al Secretario.</p>
+        <div style={{background:C.granateLight,borderRadius:10,padding:"10px",marginBottom:14,fontSize:13,color:C.granateDark,fontWeight:600}}>🐸 ¡Visca el Levante i la Rana Mecànica!</div>
         <button onClick={onLogout} style={{width:"100%",padding:11,background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:10,cursor:"pointer",fontWeight:600,color:C.gris,fontFamily:"inherit"}}>Cerrar sesión</button>
       </div>
     </div>
@@ -718,16 +544,18 @@ export default function PortalVerificacion(){
   const [pantalla,setPantalla]=useState("login");
   const [socio,setSocio]=useState(null);
   const [perfiles,setPerfiles]=useState([]);
+  const [resultado,setResultado]=useState(null);
 
-  const logout=()=>{setSocio(null);setPantalla("login");setPerfiles([]);};
+  const logout=()=>{setSocio(null);setPantalla("login");setPerfiles([]);setResultado(null);};
 
   const handleMultiple=(p)=>{setPerfiles(p);setPantalla("selector");};
 
-  const handleSeleccionar=(s)=>{setSocio(s);setPantalla("datos");};
+  const handleSeleccionar=(s)=>{setSocio(s);setPantalla("formulario");};
 
-  if(pantalla==="login")     return <Login onLogin={s=>{setSocio(s);setPantalla("datos");}} onMultiple={handleMultiple}/>;
-  if(pantalla==="selector")  return <SelectorPerfil perfiles={perfiles} onSeleccionar={handleSeleccionar} onVolver={()=>setPantalla("login")}/>;
-  if(pantalla==="datos")     return <MisDatos socio={socio} onLogout={logout} onCorregir={()=>setPantalla("correccion")} onCambiarPerfil={perfiles.length>1?()=>setPantalla("selector"):null}/>;
-  if(pantalla==="correccion")return <SolicitarCorreccion socio={socio} onVolver={()=>setPantalla("datos")} onEnviado={()=>setPantalla("enviado")}/>;
-  if(pantalla==="enviado")   return <Enviado socio={socio} onLogout={logout} descargarPDF={(s)=>{const h=generarPDFHTML(s);const v=window.open("","_blank");if(v){v.document.write(h);v.document.close();setTimeout(()=>v.print(),500);}}}/>;
+  const handleEnviado=(res)=>{setResultado(res);setPantalla("confirmacion");};
+
+  if(pantalla==="login")        return <Login onLogin={s=>{setSocio(s);setPerfiles([s]);setPantalla("formulario");}} onMultiple={handleMultiple}/>;
+  if(pantalla==="selector")     return <SelectorPerfil perfiles={perfiles} onSeleccionar={handleSeleccionar} onVolver={()=>setPantalla("login")}/>;
+  if(pantalla==="formulario")   return <FormularioUnificado socio={socio} onEnviado={handleEnviado} onLogout={logout} onCambiarPerfil={()=>setPantalla("selector")} perfiles={perfiles}/>;
+  if(pantalla==="confirmacion") return <Confirmacion socio={resultado?.socio||socio} hayCambios={resultado?.hayCambios} htmlDoc={resultado?.htmlDoc} onLogout={logout}/>;
 }
