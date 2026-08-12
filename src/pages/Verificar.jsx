@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { supabase } from "../supabase.js";
 
-// URL Edge Function Resend
-const FUNCTIONS_URL = import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || "https://qgmovsqawnadgvywlbyw.supabase.co/functions/v1";
-const SECRETARIO_EMAIL = "penyaranamecanica@gmail.com";
+// ── EMAILJS ───────────────────────────────────────────
+const EMAILJS_SERVICE_ID  = "service_g9n6e5c";
+const EMAILJS_TEMPLATE_ID = "template_ygte3bo";
+const EMAILJS_PUBLIC_KEY  = "IvxWWpgwA15GDRGyF";
+const SECRETARIO_EMAIL    = "penyaranamecanica@gmail.com";
 
 // Generar PDF de verificación usando solo HTML/CSS (sin librería externa)
 const generarPDFHTML = (socio) => {
@@ -89,13 +91,24 @@ const generarPDFHTML = (socio) => {
   `;
 };
 
-// Enviar email via Edge Function Resend
-const enviarEmail = async (destinatario, asunto, html) => {
+// Enviar email via EmailJS
+const enviarEmail = async (destinatario, asunto, mensaje) => {
   try {
-    const res = await fetch(`${FUNCTIONS_URL}/send-email`, {
+    const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ to: destinatario, subject: asunto, html }),
+      body: JSON.stringify({
+        service_id:  EMAILJS_SERVICE_ID,
+        template_id: EMAILJS_TEMPLATE_ID,
+        user_id:     EMAILJS_PUBLIC_KEY,
+        template_params: {
+          to_email:  destinatario,
+          subject:   asunto,
+          message:   mensaje,
+          name:      "La Rana Mecánica",
+          reply_to:  SECRETARIO_EMAIL,
+        },
+      }),
     });
     return res.ok;
   } catch(e) {
@@ -532,7 +545,7 @@ function Confirmacion({socio,hayCambios,htmlDoc,onLogout}){
           📄 Descargar mi ficha en PDF
         </button>
         <p style={{fontSize:11,color:C.muted,marginBottom:14,lineHeight:1.5}}>Imprímela, fírmala y entrégala al Secretario.</p>
-        <div style={{background:C.granateLight,borderRadius:10,padding:"10px",marginBottom:14,fontSize:13,color:C.granateDark,fontWeight:600}}>🐸 ¡Matxo Llevant i la Rana Mecànica!</div>
+        <div style={{background:C.granateLight,borderRadius:10,padding:"10px",marginBottom:14,fontSize:13,color:C.granateDark,fontWeight:600}}>🐸 Matxo Llevant!</div>
         <button onClick={onLogout} style={{width:"100%",padding:11,background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:10,cursor:"pointer",fontWeight:600,color:C.gris,fontFamily:"inherit"}}>Cerrar sesión</button>
       </div>
     </div>
