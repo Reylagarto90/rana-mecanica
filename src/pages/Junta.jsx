@@ -779,7 +779,7 @@ function Verificaciones({verificaciones,setVerificaciones,socios,setSocios}){
 // ══════════════════════════════════════════════════════════
 // CUOTAS
 // ══════════════════════════════════════════════════════════
-function Cuotas({socios,cuotas,setCuotas}){
+function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos}){
   const [modal,setModal]=useState(false);
   const [filtro,setFiltro]=useState("pendientes");
   const [form,setForm]=useState({socio_id:"",temporada:TEMPORADA_ACTUAL,categoria:"nueva_alta",importe:"",pagado:false,fecha_pago:"",forma_pago:"Bizum"});
@@ -811,9 +811,26 @@ function Cuotas({socios,cuotas,setCuotas}){
   };
 
   const marcarPagado=async(id)=>{
+    const c=cuotas.find(x=>x.id===id);
     await supabase.from("cuotas").update({pagado:true,fecha_pago:hoy}).eq("id",id);
-    setCuotas(p=>p.map(c=>c.id===id?{...c,pagado:true,fecha_pago:hoy}:c));
-    ok("✅ Cuota marcada como pagada");
+    setCuotas(p=>p.map(x=>x.id===id?{...x,pagado:true,fecha_pago:hoy}:x));
+
+    // Ingreso automático en Tesorería del ejercicio correspondiente a la temporada de la cuota
+    if(c && Number(c.importe)>0){
+      const socio=getSocio(c.socio_id);
+      const ejercicioCuota=ejercicios.find(e=>e.nombre===c.temporada)||ejercicios.find(e=>e.nombre===TEMPORADA_ACTUAL)||ejercicios[ejercicios.length-1];
+      if(ejercicioCuota){
+        const mov={
+          tipo:"ingreso",
+          concepto:`Cuota ${c.temporada}${socio?` · ${socio.nombre} ${socio.apellidos}`:""}`,
+          categoria:"Cuotas socios",
+          importe:Number(c.importe), fecha:hoy, ejercicio_id:ejercicioCuota.id,
+        };
+        const {data:movData}=await supabase.from("movimientos_ejercicio").insert([mov]).select();
+        if(movData) setMovimientos(prev=>[...prev,...movData]);
+      }
+    }
+    ok("✅ Cuota marcada como pagada · ingreso añadido a Tesorería");
   };
 
   return(<div>
@@ -1061,14 +1078,18 @@ function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
 // ══════════════════════════════════════════════════════════
 // ACTIVIDADES
 // ══════════════════════════════════════════════════════════
-function Actividades({socios,actividades,setActividades}){
+function Actividades({socios,actividades,setActividades,inscripciones,setInscripciones,ejercicios,setMovimientos}){
   const [modal,setModal]=useState(false);
+  const [verInscritos,setVerInscritos]=useState(null); // actividad seleccionada
   const [notif,setNotif]=useState(null);
   const [form,setForm]=useState({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:""});
   const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
 
   const tipoIcon={autocar:"🚌",cena:"🍽️",excursion:"🏔️",reunion:"📋",sorteo:"🎰",otro:"📌"};
+
+  const getSocio=(id)=>socios.find(s=>s.id===id);
+  const inscritosDe=(actividadId)=>inscripciones.filter(i=>i.actividad_id===actividadId && i.estado!=="cancelada");
 
   const guardar=async()=>{
     if(!form.nombre) return;
@@ -1079,6 +1100,28 @@ function Actividades({socios,actividades,setActividades}){
     ok("✅ Actividad creada");
   };
 
+  const marcarPagado=async(inscripcion,actividad)=>{
+    await supabase.from("inscripciones").update({pagado:true,fecha_pago:hoy}).eq("id",inscripcion.id);
+    setInscripciones(prev=>prev.map(i=>i.id===inscripcion.id?{...i,pagado:true,fecha_pago:hoy}:i));
+
+    const socio=getSocio(inscripcion.socio_id);
+    const importe=Number(actividad.precio_socio)||0;
+    if(importe>0){
+      const ejercicioActivo=ejercicios.find(e=>e.nombre===TEMPORADA_ACTUAL)||ejercicios[ejercicios.length-1];
+      if(ejercicioActivo){
+        const mov={
+          tipo:"ingreso",
+          concepto:`${actividad.nombre}${socio?` · ${socio.nombre} ${socio.apellidos}`:""}`,
+          categoria:"Actividades",
+          importe, fecha:hoy, ejercicio_id:ejercicioActivo.id,
+        };
+        const {data:movData}=await supabase.from("movimientos_ejercicio").insert([mov]).select();
+        if(movData) setMovimientos(prev=>[...prev,...movData]);
+      }
+    }
+    ok(`✅ Pago registrado${importe>0?" · ingreso añadido a Tesorería":""}`);
+  };
+
   return(<div>
     {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.verde,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14}}>{notif}</div>}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:12}}>
@@ -1086,7 +1129,10 @@ function Actividades({socios,actividades,setActividades}){
       <Btn onClick={()=>setModal(true)}>+ Nueva actividad</Btn>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
-      {actividades.sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||"")).map(a=>(
+      {actividades.sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||"")).map(a=>{
+        const inscritos=inscritosDe(a.id);
+        const pagados=inscritos.filter(i=>i.pagado).length;
+        return(
         <Card key={a.id} style={{borderTop:`4px solid ${a.fecha&&a.fecha<hoy?C.gris:C.granate}`}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
             <span style={{fontSize:24}}>{tipoIcon[a.tipo]||"📌"}</span>
@@ -1095,9 +1141,12 @@ function Actividades({socios,actividades,setActividades}){
           <h3 style={{fontWeight:700,fontSize:14,color:C.text,marginBottom:6}}>{a.nombre}</h3>
           <p style={{fontSize:12,color:C.muted,marginBottom:8}}>{a.fecha_texto||fmtFecha(a.fecha)}</p>
           {a.descripcion&&<p style={{fontSize:12,color:C.gris,marginBottom:8,fontStyle:"italic"}}>{a.descripcion}</p>}
-          {a.precio_socio>0&&<div style={{fontSize:12,color:C.gris}}>💶 {fmt(a.precio_socio)}/persona · 🏟️ {a.plazas} plazas</div>}
+          {a.precio_socio>0&&<div style={{fontSize:12,color:C.gris,marginBottom:8}}>💶 {fmt(a.precio_socio)}/persona · 🏟️ {a.plazas} plazas</div>}
+          <button onClick={()=>setVerInscritos(a)} style={{width:"100%",padding:"8px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:C.text}}>
+            👥 {inscritos.length} apuntados{a.precio_socio>0?` · ${pagados} pagado${pagados===1?"":"s"}`:""}
+          </button>
         </Card>
-      ))}
+      );})}
     </div>
 
     <Modal open={modal} onClose={()=>setModal(false)} title="Nueva actividad" width={560}>
@@ -1115,6 +1164,39 @@ function Actividades({socios,actividades,setActividades}){
         <Btn outline onClick={()=>setModal(false)} style={{flex:1}}>Cancelar</Btn>
         <Btn onClick={guardar} style={{flex:1}}>Crear actividad</Btn>
       </div>
+    </Modal>
+
+    <Modal open={!!verInscritos} onClose={()=>setVerInscritos(null)} title={verInscritos?`👥 Apuntados · ${verInscritos.nombre}`:""} width={560}>
+      {verInscritos&&(()=>{
+        const inscritos=inscritosDe(verInscritos.id);
+        return(<div>
+          {inscritos.length===0?(
+            <p style={{color:C.muted,fontSize:13,marginBottom:10}}>Todavía no se ha apuntado nadie.</p>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
+              {inscritos.map(i=>{
+                const s=getSocio(i.socio_id);
+                return(
+                  <div key={i.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 12px",background:C.grisLight,borderRadius:9}}>
+                    <div>
+                      <div style={{fontWeight:600,fontSize:13}}>{s?`${s.nombre} ${s.apellidos}`:"—"}</div>
+                      <div style={{fontSize:11,color:C.muted}}>{s?.numero}</div>
+                    </div>
+                    {verInscritos.precio_socio>0?(
+                      i.pagado?
+                        <Pill text="✓ Pagado" color={C.verde} bg={C.verdeLight}/>
+                      :<Btn small color={C.verde} onClick={()=>marcarPagado(i,verInscritos)}>✓ Marcar pagado</Btn>
+                    ):(
+                      <Pill text="Gratuita" color={C.gris} bg="#eee"/>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div style={{fontSize:12,color:C.muted,textAlign:"right"}}>{inscritos.length} apuntados{verInscritos.plazas?` / ${verInscritos.plazas} plazas`:""}</div>
+        </div>);
+      })()}
     </Modal>
   </div>);
 }
@@ -1370,6 +1452,7 @@ export default function Junta(){
   const [cuotas,setCuotas]=useState([]);
   const [loteria,setLoteria]=useState([]);
   const [actividades,setActividades]=useState([]);
+  const [inscripciones,setInscripciones]=useState([]);
   const [solicitudes,setSolicitudes]=useState([]);
   const [verificaciones,setVerificaciones]=useState([]);
   const [ejercicios,setEjercicios]=useState([]);
@@ -1382,20 +1465,21 @@ export default function Junta(){
       setLoading(true);
       try{
         const [
-          {data:s},{data:c},{data:lot},{data:a},{data:sol},{data:ver},
+          {data:s},{data:c},{data:lot},{data:a},{data:insc},{data:sol},{data:ver},
           {data:ej},{data:mov},{data:tar}
         ] = await Promise.all([
           supabase.from("socios").select("*").order("numero"),
           supabase.from("cuotas").select("*").order("created_at",{ascending:false}),
           supabase.from("loteria").select("*").order("created_at",{ascending:false}),
           supabase.from("actividades").select("*").order("fecha"),
+          supabase.from("inscripciones").select("*").order("created_at",{ascending:false}),
           supabase.from("solicitudes_alta").select("*").order("created_at",{ascending:false}),
           supabase.from("verificaciones").select("*").order("created_at",{ascending:false}),
           supabase.from("ejercicios").select("*").order("id"),
           supabase.from("movimientos_ejercicio").select("*").order("fecha"),
           supabase.from("tarifas").select("*").order("id"),
         ]);
-        setSocios(s||[]); setCuotas(c||[]); setLoteria(lot||[]); setActividades(a||[]);
+        setSocios(s||[]); setCuotas(c||[]); setLoteria(lot||[]); setActividades(a||[]); setInscripciones(insc||[]);
         setSolicitudes(sol||[]); setVerificaciones(ver||[]);
         setEjercicios(ej||[]); setMovimientos(mov||[]); setTarifas(tar||[]);
       }catch(e){
@@ -1436,9 +1520,9 @@ export default function Junta(){
       case "consentimientos": return <Consentimientos socios={socios} setSocios={setSocios}/>;
       case "solicitudes":   return <Solicitudes solicitudes={solicitudes} setSolicitudes={setSolicitudes} socios={socios} setSocios={setSocios} setCuotas={setCuotas}/>;
       case "verificaciones":return <Verificaciones verificaciones={verificaciones} setVerificaciones={setVerificaciones} socios={socios} setSocios={setSocios}/>;
-      case "cuotas":        return <Cuotas socios={socios} cuotas={cuotas} setCuotas={setCuotas}/>;
+      case "cuotas":        return <Cuotas socios={socios} cuotas={cuotas} setCuotas={setCuotas} ejercicios={ejercicios} setMovimientos={setMovimientos}/>;
       case "loteria":       return <Loteria socios={socios} loteria={loteria} setLoteria={setLoteria} ejercicios={ejercicios} setMovimientos={setMovimientos}/>;
-      case "actividades":   return <Actividades socios={socios} actividades={actividades} setActividades={setActividades}/>;
+      case "actividades":   return <Actividades socios={socios} actividades={actividades} setActividades={setActividades} inscripciones={inscripciones} setInscripciones={setInscripciones} ejercicios={ejercicios} setMovimientos={setMovimientos}/>;
       case "tesoreria":     return <Tesoreria ejercicios={ejercicios} setEjercicios={setEjercicios} movimientos={movimientos} setMovimientos={setMovimientos}/>;
       case "configuracion": return <Configuracion tarifas={tarifas} setTarifas={setTarifas}/>;
       default: return null;
@@ -1464,6 +1548,10 @@ export default function Junta(){
           })}
         </nav>
         <div style={{padding:"12px 14px",borderTop:"1px solid rgba(255,255,255,0.1)"}}>
+          <button onClick={()=>{ sessionStorage.removeItem("junta_auth"); window.location.hash="#/junta/login"; window.location.reload(); }}
+            style={{width:"100%",padding:"9px 12px",marginBottom:10,background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:8,cursor:"pointer",color:C.blanco,fontSize:13,fontWeight:600,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            🚪 Cerrar sesión
+          </button>
           <div style={{background:"rgba(255,255,255,0.08)",borderRadius:8,padding:"8px 10px",fontSize:10,color:"rgba(255,255,255,0.4)",lineHeight:1.5,textAlign:"center"}}>
             🔐 Acceso restringido<br/>Junta Directiva
           </div>
