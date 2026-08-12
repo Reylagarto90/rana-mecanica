@@ -113,16 +113,33 @@ const generarYSubirPDF = async (socio, htmlDoc) => {
     const html2pdf = await cargarHtml2Pdf();
     const contenedor = document.createElement("div");
     contenedor.innerHTML = htmlDoc;
-    contenedor.style.position = "fixed";
-    contenedor.style.left = "-9999px";
+    contenedor.style.position = "absolute";
+    contenedor.style.top = "0";
+    contenedor.style.left = "0";
+    contenedor.style.width = "650px";
+    contenedor.style.background = "#ffffff";
+    contenedor.style.zIndex = "-9999";
+    contenedor.style.opacity = "0.01"; // 0 puro puede hacer que algunos navegadores no lo pinten
+    contenedor.style.pointerEvents = "none";
     document.body.appendChild(contenedor);
+
+    // Esperar un frame para asegurar que el navegador ha maquetado el contenido
+    await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
     const blob = await html2pdf()
       .from(contenedor)
       .set({
         margin: 10,
         filename: "ficha.pdf",
-        html2canvas: { scale: 2, useCORS: true },
+        html2canvas: {
+          scale: 2,
+          useCORS: true,
+          backgroundColor: "#ffffff",
+          scrollX: 0,
+          scrollY: -window.scrollY,
+          windowWidth: contenedor.scrollWidth,
+          windowHeight: contenedor.scrollHeight,
+        },
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
       })
       .outputPdf("blob");
