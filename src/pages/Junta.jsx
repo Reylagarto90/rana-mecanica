@@ -848,16 +848,76 @@ function Actividades({socios,actividades,setActividades}){
 // ══════════════════════════════════════════════════════════
 // TESORERÍA (simplificada, datos de Supabase)
 // ══════════════════════════════════════════════════════════
-function Tesoreria({ejercicios,movimientos,setMovimientos}){
+function Tesoreria({ejercicios,setEjercicios,movimientos,setMovimientos}){
   const [ejId,setEjId]=useState(ejercicios[ejercicios.length-1]?.id);
   const [modal,setModal]=useState(null);
+  const [modalNuevoEj,setModalNuevoEj]=useState(false);
   const [form,setForm]=useState({tipo:"ingreso",concepto:"",categoria:"Cuotas socios",importe:"",fecha:hoy});
+  const [formNuevoEj,setFormNuevoEj]=useState({nombre:"",ejercicioBaseId:"",incluirRemanente:true});
   const [notif,setNotif]=useState(null);
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const setFNE=(k,v)=>setFormNuevoEj(f=>({...f,[k]:v}));
   const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
 
   const ej=ejercicios.find(e=>e.id===ejId)||ejercicios[0];
-  if(!ej) return <div>Sin ejercicios</div>;
+
+  const calcularResultado=(ejercicioId)=>{
+    const movs=movimientos.filter(m=>m.ejercicio_id===ejercicioId);
+    const ing=movs.filter(m=>m.tipo==="ingreso").reduce((a,m)=>a+Number(m.importe),0);
+    const gas=movs.filter(m=>m.tipo==="gasto").reduce((a,m)=>a+Number(m.importe),0);
+    return ing-gas;
+  };
+
+  const abrirNuevoEjercicio=()=>{
+    const ultimo=ejercicios[ejercicios.length-1];
+    setFormNuevoEj({nombre:"",ejercicioBaseId:ultimo?.id||"",incluirRemanente:true});
+    setModalNuevoEj(true);
+  };
+
+  const crearEjercicio=async()=>{
+    if(!formNuevoEj.nombre.trim()){ok("❌ Ponle un nombre al ejercicio (p.ej. 2026/2027)");return;}
+    if(ejercicios.some(e=>e.nombre.trim().toLowerCase()===formNuevoEj.nombre.trim().toLowerCase())){ok("❌ Ya existe un ejercicio con ese nombre");return;}
+
+    const {data:nuevo,error}=await supabase.from("ejercicios").insert([{nombre:formNuevoEj.nombre.trim()}]).select();
+    if(error||!nuevo?.[0]){ok("❌ Error al crear el ejercicio");return;}
+    const nuevoEj=nuevo[0];
+    setEjercicios(prev=>[...prev,nuevoEj]);
+
+    // Traspaso automático del remanente del ejercicio anterior seleccionado
+    if(formNuevoEj.incluirRemanente && formNuevoEj.ejercicioBaseId){
+      const base=ejercicios.find(e=>e.id===Number(formNuevoEj.ejercicioBaseId)||e.id===formNuevoEj.ejercicioBaseId);
+      const resultado=calcularResultado(base?.id);
+      if(base && resultado!==0){
+        const movRemanente={
+          tipo: resultado>=0?"ingreso":"gasto",
+          concepto: `Remanente ejercicio ${base.nombre}`,
+          categoria: resultado>=0?"Remanente ejercicio anterior":"Otros gastos",
+          importe: Math.abs(resultado),
+          fecha: hoy,
+          ejercicio_id: nuevoEj.id,
+        };
+        const {data:movData,error:errMov}=await supabase.from("movimientos_ejercicio").insert([movRemanente]).select();
+        if(!errMov && movData) setMovimientos(prev=>[...prev,...movData]);
+      }
+    }
+
+    setEjId(nuevoEj.id);
+    setModalNuevoEj(false);
+    ok(`✅ Ejercicio ${nuevoEj.nombre} creado`);
+  };
+
+  if(!ej) return(<div>
+    <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark,marginBottom:16}}>📒 Tesorería</h2>
+    <p style={{marginBottom:16,color:C.muted}}>Sin ejercicios todavía.</p>
+    <Btn onClick={abrirNuevoEjercicio}>+ Crear primer ejercicio</Btn>
+    <Modal open={modalNuevoEj} onClose={()=>setModalNuevoEj(false)} title="🗓️ Nuevo ejercicio contable">
+      <Input label="Nombre del ejercicio" value={formNuevoEj.nombre} onChange={v=>setFNE("nombre",v)} placeholder="2026/2027" required/>
+      <div style={{display:"flex",gap:10}}>
+        <Btn outline onClick={()=>setModalNuevoEj(false)} style={{flex:1}}>Cancelar</Btn>
+        <Btn onClick={crearEjercicio} style={{flex:1}}>Crear</Btn>
+      </div>
+    </Modal>
+  </div>);
 
   const movEj=movimientos.filter(m=>m.ejercicio_id===ej.id);
   const ingresos=movEj.filter(m=>m.tipo==="ingreso").reduce((a,m)=>a+Number(m.importe),0);
@@ -886,12 +946,13 @@ function Tesoreria({ejercicios,movimientos,setMovimientos}){
       </div>
     </div>
 
-    <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap"}}>
+    <div style={{display:"flex",gap:8,marginBottom:20,flexWrap:"wrap",alignItems:"center"}}>
       {ejercicios.map(e=>(
         <button key={e.id} onClick={()=>setEjId(e.id)} style={{padding:"9px 16px",borderRadius:10,border:`2px solid ${ejId===e.id?C.granate:C.border}`,background:ejId===e.id?C.granateLight:C.blanco,cursor:"pointer",fontWeight:700,fontSize:13,color:ejId===e.id?C.granateDark:C.gris,fontFamily:"inherit"}}>
           {e.nombre}
         </button>
       ))}
+      <Btn small outline onClick={abrirNuevoEjercicio}>+ Nuevo ejercicio</Btn>
     </div>
 
     <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}>
@@ -937,6 +998,32 @@ function Tesoreria({ejercicios,movimientos,setMovimientos}){
       <div style={{display:"flex",gap:10}}>
         <Btn outline onClick={()=>setModal(null)} style={{flex:1}}>Cancelar</Btn>
         <Btn color={modal==="ingreso"?C.verde:C.rojo} onClick={guardar} style={{flex:1}}>Guardar</Btn>
+      </div>
+    </Modal>
+
+    <Modal open={modalNuevoEj} onClose={()=>setModalNuevoEj(false)} title="🗓️ Nuevo ejercicio contable">
+      <Input label="Nombre del ejercicio" value={formNuevoEj.nombre} onChange={v=>setFNE("nombre",v)} placeholder="2026/2027" required/>
+      {ejercicios.length>0&&(
+        <>
+          <Select label="Ejercicio del que traspasar el remanente" value={formNuevoEj.ejercicioBaseId} onChange={v=>setFNE("ejercicioBaseId",v)}
+            options={ejercicios.map(e=>({value:e.id,label:e.nombre}))}/>
+          <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",marginBottom:16,padding:"10px 12px",borderRadius:8,background:formNuevoEj.incluirRemanente?C.verdeLight:C.grisLight}}>
+            <input type="checkbox" checked={formNuevoEj.incluirRemanente} onChange={e=>setFNE("incluirRemanente",e.target.checked)} style={{accentColor:C.verde}}/>
+            Incluir remanente automáticamente como primer movimiento
+          </label>
+          {formNuevoEj.incluirRemanente&&formNuevoEj.ejercicioBaseId&&(()=>{
+            const base=ejercicios.find(e=>String(e.id)===String(formNuevoEj.ejercicioBaseId));
+            const resultado=calcularResultado(base?.id);
+            return(<div style={{fontSize:12,color:C.muted,marginTop:-8,marginBottom:16}}>
+              Remanente de {base?.nombre}: <strong style={{color:resultado>=0?C.verde:C.rojo}}>{resultado>=0?"+":""}{fmt(resultado)}</strong>
+              {" "}se añadirá como {resultado>=0?"ingreso":"gasto"} en el nuevo ejercicio.
+            </div>);
+          })()}
+        </>
+      )}
+      <div style={{display:"flex",gap:10}}>
+        <Btn outline onClick={()=>setModalNuevoEj(false)} style={{flex:1}}>Cancelar</Btn>
+        <Btn onClick={crearEjercicio} style={{flex:1}}>Crear ejercicio</Btn>
       </div>
     </Modal>
   </div>);
@@ -1074,7 +1161,7 @@ export default function Junta(){
       case "verificaciones":return <Verificaciones verificaciones={verificaciones} setVerificaciones={setVerificaciones} socios={socios} setSocios={setSocios}/>;
       case "cuotas":        return <Cuotas socios={socios} cuotas={cuotas} setCuotas={setCuotas}/>;
       case "actividades":   return <Actividades socios={socios} actividades={actividades} setActividades={setActividades}/>;
-      case "tesoreria":     return <Tesoreria ejercicios={ejercicios} movimientos={movimientos} setMovimientos={setMovimientos}/>;
+      case "tesoreria":     return <Tesoreria ejercicios={ejercicios} setEjercicios={setEjercicios} movimientos={movimientos} setMovimientos={setMovimientos}/>;
       case "configuracion": return <Configuracion tarifas={tarifas} setTarifas={setTarifas}/>;
       default: return null;
     }
