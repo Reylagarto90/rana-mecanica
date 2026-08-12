@@ -260,7 +260,8 @@ export default function FormularioAlta() {
       const registro = {
         nombre: form.nombre, apellidos: form.apellidos, dni: form.dni||null,
         fecha_nac: form.fechaNac||null, telefono: form.telefono, email: form.email||null,
-        municipio: form.municipio, tipo: form.tipo, tarifa_clave: form.tarifa_clave,
+        municipio: form.municipio, como_conocio: form.comoConocio||null,
+        tipo: form.tipo, tarifa_clave: form.tarifa_clave,
         tiene_acciones: form.tieneAcciones, num_acciones: form.tieneAcciones?Number(form.numAcciones)||0:0,
         es_abonado: form.esAbonado, num_abonado: form.esAbonado?form.numAbonado:null,
         rgpd: form.rgpd, consent_foto_interna: form.consentFotoInterna, consent_foto_rrss: form.consentFotoRrss,
