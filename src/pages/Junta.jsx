@@ -1,12 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
-
-// ── SUPABASE ──────────────────────────────────────────────
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || "https://qgmovsqawnadgvywlbyw.supabase.co",
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ""
-);
+import { supabase } from "../supabase.js";
 
 // ── PALETA ────────────────────────────────────────────────
 const C = {

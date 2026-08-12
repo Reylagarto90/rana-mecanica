@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "../supabase.js";
 
 // URL Edge Function Resend
 const FUNCTIONS_URL = import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || "https://qgmovsqawnadgvywlbyw.supabase.co/functions/v1";

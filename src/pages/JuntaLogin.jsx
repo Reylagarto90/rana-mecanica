@@ -1,11 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL || "https://qgmovsqawnadgvywlbyw.supabase.co",
-  import.meta.env.VITE_SUPABASE_ANON_KEY || ""
-)
+import { supabase } from '../supabase.js'
 
 const LOGO = "/rana-mecanica/logo.jpg"
 const C = {
