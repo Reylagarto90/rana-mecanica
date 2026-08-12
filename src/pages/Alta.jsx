@@ -66,8 +66,11 @@ export default function FormularioAlta() {
   const [form, setForm] = useState({
     nombre: "", apellidos: "", dni: "", fechaNac: "",
     telefono: "", email: "", municipio: "", comoConocio: "",
-    tipo: "adulto", rgpd: false, fotoAut: false, comentarios: "",
+    tipo: "adulto", rgpd: false, comentarios: "",
     tieneAcciones: false, numAcciones: 0, esAbonado: false, numAbonado: "",
+    consentFotoInterna: false, consentFotoRrss: false, consentFotoWeb: false,
+    consentFotoLevante: false, consentPromoPena: false, consentPatrocinadores: false,
+    consentWhatsapp: false,
   });
   const [errores, setErrores] = useState({});
 
@@ -329,22 +332,56 @@ export default function FormularioAlta() {
                 ))}
               </div>
 
-              <div style={{ marginBottom: 16 }}>
-                <label style={{ display: "flex", gap: 12, cursor: "pointer", padding: "14px 16px", borderRadius: 12, border: `2px solid ${errores.rgpd ? C.granate : form.rgpd ? C.verde : C.border}`, background: form.rgpd ? C.verdeLight : C.blanco, transition: "all 0.2s", alignItems: "flex-start" }}>
-                  <input type="checkbox" checked={form.rgpd} onChange={e => set("rgpd", e.target.checked)} style={{ marginTop: 2, width: 18, height: 18, accentColor: C.verde, flexShrink: 0 }} />
-                  <span style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>
-                    Acepto que mis datos personales sean tratados por la Peña La Rana Mecánica con fines de gestión de socios, según la <strong>Ley Orgánica de Protección de Datos (LOPD/RGPD)</strong>. *
-                  </span>
-                </label>
-                {errores.rgpd && <p style={{ fontSize: 12, color: C.granate, marginTop: 6 }}>⚠ {errores.rgpd}</p>}
+              {/* ── CONSENTIMIENTOS RGPD ── */}
+              <div style={{ marginBottom: 20 }}>
+
+                {/* OBLIGATORIO */}
+                <div style={{ background: "#fff8e1", border: "2px solid #f59e0b", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 10 }}>⚠️ Consentimiento obligatorio</div>
+                  <label style={{ display: "flex", gap: 12, cursor: "pointer", alignItems: "flex-start" }}>
+                    <input type="checkbox" checked={form.rgpd} onChange={e => set("rgpd", e.target.checked)} style={{ marginTop: 2, width: 18, height: 18, accentColor: C.verde, flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, color: C.text, lineHeight: 1.6 }}>
+                      <strong>Consiento el tratamiento de mis datos personales</strong> por la Peña Levantinista La Rana Mecánica (Godella-Rocafort) para la gestión de la relación asociativa: altas/bajas, cuotas, comunicaciones operativas sobre actividades, administración interna y cumplimiento de obligaciones legales. Los datos podrán comunicarse a Levante UD, Fundación Levante UD, Federación de Peñas, Administraciones Públicas, entidades bancarias y aseguradoras cuando sea necesario. Puede ejercer sus derechos de acceso, rectificación, supresión y oposición en <strong>penyaranamecanica@gmail.com</strong>. <em>Sin este consentimiento no es posible hacerse socio.</em> *
+                    </span>
+                  </label>
+                  {errores.rgpd && <p style={{ fontSize: 12, color: C.granate, marginTop: 6 }}>⚠ {errores.rgpd}</p>}
+                </div>
+
+                {/* IMAGEN */}
+                <div style={{ background: C.azulLight, border: `1px solid ${C.azul}30`, borderRadius: 12, padding: "14px 16px", marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.azul, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 4 }}>📸 Autorización de imagen (opcional)</div>
+                  <p style={{ fontSize: 12, color: C.gris, marginBottom: 12, fontStyle: "italic" }}>Negarse a autorizar la publicación de imágenes no impide ser socio ni participar en las actividades.</p>
+                  {[
+                    ["consentFotoInterna", "Fotografías y vídeos de actividades para comunicación interna de la Peña."],
+                    ["consentFotoRrss",    "Publicación en redes sociales oficiales de la Peña."],
+                    ["consentFotoWeb",     "Publicación en página web y materiales corporativos/promocionales de la Peña."],
+                    ["consentFotoLevante", "Cesión de imágenes al Levante UD, Fundación Levante UD o Federación de Peñas para comunicar o promocionar actividades conjuntas."],
+                  ].map(([k, label]) => (
+                    <label key={k} style={{ display: "flex", gap: 10, cursor: "pointer", padding: "8px 0", borderBottom: `1px solid ${C.border}`, alignItems: "flex-start" }}>
+                      <input type="checkbox" checked={form[k]} onChange={e => set(k, e.target.checked)} style={{ marginTop: 2, width: 16, height: 16, accentColor: C.azul, flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>{label}</span>
+                    </label>
+                  ))}
+                </div>
+
+                {/* COMUNICACIONES */}
+                <div style={{ background: C.granateLight, border: `1px solid ${C.granate}30`, borderRadius: 12, padding: "14px 16px", marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.granate, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 12 }}>📢 Comunicaciones (opcional)</div>
+                  {[
+                    ["consentPromoPena",      "Recibir comunicaciones promocionales propias de la Peña (merchandising, campañas, etc.)."],
+                    ["consentPatrocinadores", "Recibir información de patrocinadores y colaboradores enviada por la Peña (sin cesión de mis datos a terceros)."],
+                    ["consentWhatsapp",        "Incorporarme al grupo/comunidad de WhatsApp de La Rana Mecánica. He sido informado/a de las condiciones de funcionamiento y visibilidad de mis datos en el grupo."],
+                  ].map(([k, label]) => (
+                    <label key={k} style={{ display: "flex", gap: 10, cursor: "pointer", padding: "8px 0", borderBottom: `1px solid ${C.border}`, alignItems: "flex-start" }}>
+                      <input type="checkbox" checked={form[k]} onChange={e => set(k, e.target.checked)} style={{ marginTop: 2, width: 16, height: 16, accentColor: C.granate, flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>{label}</span>
+                    </label>
+                  ))}
+                </div>
+
               </div>
 
-              <label style={{ display: "flex", gap: 12, cursor: "pointer", padding: "14px 16px", borderRadius: 12, border: `2px solid ${form.fotoAut ? C.azul : C.border}`, background: form.fotoAut ? "#e8eef9" : C.blanco, marginBottom: 6, transition: "all 0.2s", alignItems: "flex-start" }}>
-                <input type="checkbox" checked={form.fotoAut} onChange={e => set("fotoAut", e.target.checked)} style={{ marginTop: 2, width: 18, height: 18, accentColor: C.azul, flexShrink: 0 }} />
-                <span style={{ fontSize: 13, color: C.text, lineHeight: 1.5 }}>
-                  Autorizo la publicación de fotografías en las que aparezca en las redes sociales y materiales de la peña.
-                </span>
-              </label>
+
             </div>
           )}
 
