@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "../supabase.js";
 
 const LOGO = "/rana-mecanica/logo.jpg";
 
@@ -13,87 +14,167 @@ const C = {
   blanco:"#fff",
 };
 
-// ── DATOS DEMO DEL PEÑISTA ────────────────────────────────
-// En producción vienen de Supabase con RLS: SELECT * FROM socios WHERE telefono = $1
-const SOCIO_DEMO = {
-  id:24, numero:"LRM-0024", nombre:"Arturo", apellidos:"Palacios Buitrago",
-  dni:"70582608R", fecha_nac:"1989-12-28", telefono:"661701672",
-  email:"arturopalaciosbuitrago@gmail.com", municipio:"Godella",
-  tipo:"adulto", cargo:"Vicepresidente", estado:"activo",
-  rgpd:true, foto_aut:true, fecha_alta:"2025-09-01",
+const fmtFecha=(f)=>{ if(!f) return "—"; const[y,m,d]=f.split("-"); return `${d}/${m}/${y}`; };
+const fmt=(n)=>`${Number(n||0).toFixed(2).replace(".",",")}€`;
+
+// ── PDF REAL con jsPDF (texto nativo, sin capturas de pantalla) ────────
+let _jsPDFPromise = null;
+const cargarJsPDF = () => {
+  if (window.jspdf?.jsPDF) return Promise.resolve(window.jspdf.jsPDF);
+  if (_jsPDFPromise) return _jsPDFPromise;
+  _jsPDFPromise = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    s.onload = () => resolve(window.jspdf.jsPDF);
+    s.onerror = () => reject(new Error("No se pudo cargar jsPDF"));
+    document.head.appendChild(s);
+  });
+  return _jsPDFPromise;
 };
 
-const CUOTAS_DEMO = [
-  {id:1, temporada:"2025/2026", categoria:"nueva_alta",  importe:30, pagado:true,  fecha_pago:"2025-09-05", forma_pago:"Bizum"},
-  {id:2, temporada:"2026/2027", categoria:"renovacion",  importe:25, pagado:false, fecha_pago:null,         forma_pago:null},
-];
+// Genera el PDF de la ficha con texto real (jsPDF) — sin capturas de pantalla,
+// así que la paginación y el ancho quedan siempre correctos.
+const generarPDFBlob = async (socio) => {
+  const jsPDFCtor = await cargarJsPDF();
+  const doc = new jsPDFCtor({ unit: "mm", format: "a4" });
 
-const ACTIVIDADES_DEMO = [
-  {id:1, nombre:"Autocar Valencia vs Getafe",  fecha:"2026-06-07", tipo:"autocar", precio_socio:12, plazas:50, inscritos:38, inscrito:true,  pasada:false},
-  {id:2, nombre:"Cena de Fin de Temporada",    fecha:"2026-06-14", tipo:"cena",    precio_socio:20, plazas:80, inscritos:67, inscrito:false, pasada:false},
-  {id:3, nombre:"Autocar Valencia vs Betis",   fecha:"2026-05-25", tipo:"autocar", precio_socio:12, plazas:50, inscritos:50, inscrito:true,  pasada:true},
-  {id:4, nombre:"Cena de Navidad",             fecha:"2025-12-20", tipo:"cena",    precio_socio:18, plazas:60, inscritos:56, inscrito:true,  pasada:true},
-  {id:5, nombre:"Asamblea General",            fecha:"2026-06-21", tipo:"reunion", precio_socio:0,  plazas:200,inscritos:12, inscrito:false, pasada:false},
-];
+  const M = 15;                    // margen
+  const W = 210 - M * 2;           // ancho útil
+  const PH = 297;                  // alto de página
+  let y = M;
 
-const LOTERIA_DEMO = [
-  {id:1, sorteo:"Navidad 2025", unidades:2, precio_und:20, total:40, pagado:true,  fecha_pago:"2025-11-20"},
-  {id:2, sorteo:"El Niño 2026", unidades:1, precio_und:20, total:20, pagado:false, fecha_pago:null},
-];
+  const nuevaPagina = () => { doc.addPage(); y = M; };
+  const check = (alto) => { if (y + alto > PH - M) nuevaPagina(); };
 
-const DOCS_DEMO = [
-  {id:1, tipo:"rgpd",        nombre:"Consentimiento RGPD",       fecha:"2025-09-01", estado:"firmado"},
-  {id:2, tipo:"alta",        nombre:"Solicitud de alta",          fecha:"2025-09-01", estado:"aprobada"},
-  {id:3, tipo:"justificante",nombre:"Justificante cuota 2025/26", fecha:"2025-09-05", estado:"disponible"},
-];
+  const fmtF=(f)=>{ if(!f) return "—"; const d=f.split("T")[0].split("-"); return `${d[2]}/${d[1]}/${d[0]}`; };
+  const si_no=(v)=>v?"Sí":"No";
+  const ahora = new Date().toLocaleString("es-ES");
 
-// ── CENSO CON VÍNCULOS TUTOR-INFANTIL ────────────────────
-// tutor_id: ID del adulto responsable del menor
-const CENSO_COMPLETO = [
-  // ADULTOS
-  {id:3,  numero:"LRM-0003", nombre:"Rafael",       apellidos:"Bernabéu Llorens",  telefono:"653211861", tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:4,  numero:"LRM-0004", nombre:"Guillem",      apellidos:"Carrion Oliva",      telefono:"649652544", tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:7,  numero:"LRM-0007", nombre:"José Ramón",   apellidos:"Esteban Mena",       telefono:"617331167", tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:8,  numero:"LRM-0008", nombre:"Jose Antonio", apellidos:"Garcia Alcantud",    telefono:"619818917", tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:9,  numero:"LRM-0009", nombre:"Marta",        apellidos:"García Alcantud",    telefono:"619818917", tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:13, numero:"LRM-0013", nombre:"Olivia",       apellidos:"Gimeno Martí",       telefono:"669815161", tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:15, numero:"LRM-0015", nombre:"Patricia",     apellidos:"Herrero Gil",        telefono:"692645562", tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:22, numero:"LRM-0022", nombre:"Marta",        apellidos:"Oliveros Romero",    telefono:"635298719", tipo:"adulto",   cargo:"Vocal",         tutor_de:[]},
-  // Arturo — tutor de Antonella (23) y Alma (40)
-  {id:24, numero:"LRM-0024", nombre:"Arturo",       apellidos:"Palacios Buitrago",  telefono:"661701672", tipo:"adulto",   cargo:"Vicepresidente",tutor_de:[23,40]},
-  {id:25, numero:"LRM-0025", nombre:"Jose Ignacio", apellidos:"Pellicer Doñate",    telefono:"722472204", tipo:"adulto",   cargo:"Presidente",    tutor_de:[36]}, // Neus vinculada manualmente
-  {id:27, numero:"LRM-0027", nombre:"Daniel",       apellidos:"Sempere Manuel",     telefono:"645774034", tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:31, numero:"LRM-0031", nombre:"Carlos",       apellidos:"Yago Granell",       telefono:"637808538", tipo:"adulto",   cargo:"Secretario",    tutor_de:[]},
-  // Olga — tutora de Antonella (23) y Alma (40)
-  {id:33, numero:"LRM-0033", nombre:"Olga",         apellidos:"Arroyave Jordan",    telefono:"661701672", tipo:"adulto",   cargo:"Peñista",       tutor_de:[23,40]},
-  {id:34, numero:"LRM-0034", nombre:"Antonio",      apellidos:"Almenar Antón",      telefono:"607697923", tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:35, numero:"LRM-0035", nombre:"Francisco",    apellidos:"Alfonso Belenguer",  telefono:"667946421", tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:38, numero:"LRM-0038", nombre:"Mari Carmen",  apellidos:"López Casares",      telefono:"616519900", tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:39, numero:"LRM-0039", nombre:"Adrián",       apellidos:"Pérez Seguí",        telefono:"665171998", tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:41, numero:"LRM-0041", nombre:"Eduard",       apellidos:"Galindo",            telefono:"628069013", tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:42, numero:"LRM-0042", nombre:"Eduardo",      apellidos:"Hervás Lafuente",    telefono:"635664315", tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:43, numero:"LRM-0043", nombre:"Luisa",        apellidos:"González Moya",      telefono:"671090657", tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  // INFANTILES
-  {id:23, numero:"LRM-0023", nombre:"Antonella",    apellidos:"Palacios Arroyave",  telefono:"661701672", tipo:"infantil", cargo:"Peñista",       tutor_de:[], tutor_id:24},
-  {id:40, numero:"LRM-0040", nombre:"Alma",         apellidos:"Palacios Arroyave",  telefono:"661701672", tipo:"infantil", cargo:"Peñista",       tutor_de:[], tutor_id:24},
-  {id:36, numero:"LRM-0036", nombre:"Neus",         apellidos:"Pellicer Oliveros",  telefono:"512512",    tipo:"infantil", cargo:"Peñista",       tutor_de:[], tutor_id:25}, // hija de Jose Ignacio Pellicer (id:25)
-  {id:32, numero:"LRM-0032", nombre:"Andrea",       apellidos:"Mocholi Herrero",    telefono:"512512",    tipo:"infantil", cargo:"Peñista",       tutor_de:[], tutor_id:21}, // hija de Jose Mocholi Ferrer (id:21)
-  {id:37, numero:"LRM-0037", nombre:"Diego",        apellidos:"Mocholi Herrero",    telefono:"512512",    tipo:"infantil", cargo:"Peñista",       tutor_de:[], tutor_id:21}, // hijo de Jose Mocholi Ferrer (id:21)
-  // CÓDIGO TEMPORAL 512512
-  {id:10, numero:"LRM-0010", nombre:"Ivan",         apellidos:"Garcia Bayona",      telefono:"512512",    tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:12, numero:"LRM-0012", nombre:"Vicente",      apellidos:"Gimeno Carot",       telefono:"512512",    tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:19, numero:"LRM-0019", nombre:"Manuel",       apellidos:"Martínez Navarro",   telefono:"512512",    tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:20, numero:"LRM-0020", nombre:"Óscar",        apellidos:"Martínez Romero",    telefono:"512512",    tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:21, numero:"LRM-0021", nombre:"Jose",         apellidos:"Mocholi Ferrer",     telefono:"512512",    tipo:"adulto",   cargo:"Tesorero",      tutor_de:[32,37]}, // padre de Andrea (32) y Diego (37) — actualizar tel. en Supabase
-  {id:28, numero:"LRM-0028", nombre:"Emma",         apellidos:"Torres Gimeno",      telefono:"512512",    tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:29, numero:"LRM-0029", nombre:"Mateo",        apellidos:"Torres Gimeno",      telefono:"512512",    tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-  {id:30, numero:"LRM-0030", nombre:"Sergio",       apellidos:"Torres González",    telefono:"512512",    tipo:"adulto",   cargo:"Peñista",       tutor_de:[]},
-];
+  // ── Cabecera ──
+  doc.setFillColor(139,10,58);
+  doc.roundedRect(M, y, W, 20, 2, 2, "F");
+  doc.setTextColor(255,255,255);
+  doc.setFont("helvetica","bold"); doc.setFontSize(14);
+  doc.text("Peña Levantinista La Rana Mecánica", M+6, y+9);
+  doc.setFont("helvetica","normal"); doc.setFontSize(9);
+  doc.text("Godella-Rocafort · Temporada 2026/2027", M+6, y+15);
+  y += 28;
 
-const CENSO_ACCESO = CENSO_COMPLETO; // alias para compatibilidad
+  // ── Título sección ──
+  const titulo=(txt)=>{
+    check(10);
+    doc.setTextColor(139,10,58);
+    doc.setFont("helvetica","bold"); doc.setFontSize(12);
+    doc.text(txt, M, y);
+    doc.setDrawColor(139,10,58);
+    doc.line(M, y+1.5, M+W, y+1.5);
+    y += 8;
+  };
 
-const fmtFecha=(f)=>{ if(!f) return "—"; const[y,m,d]=f.split("-"); return `${d}/${m}/${y}`; };
-const fmt=(n)=>`${Number(n).toFixed(2).replace(".",",")}€`;
+  // ── Fila etiqueta: valor (con fondo alterno) ──
+  let filaIdx=0;
+  const fila=(label,valor)=>{
+    const alto=7;
+    check(alto);
+    if(filaIdx%2===0){ doc.setFillColor(248,250,252); doc.rect(M,y-4.5,W,alto,"F"); }
+    filaIdx++;
+    doc.setTextColor(30,41,59);
+    doc.setFont("helvetica","bold"); doc.setFontSize(9.5);
+    doc.text(label, M+2, y);
+    doc.setFont("helvetica","normal");
+    doc.text(String(valor), M+2+W*0.42, y);
+    y += alto;
+  };
+
+  const tabla=(filas)=>{ filaIdx=0; filas.forEach(([l,v])=>fila(l,v)); y+=5; };
+
+  // Caja de color con texto envuelto (calcula alto y hace salto de página si hace falta)
+  const caja=(titulo2, texto, rgb, rgbTexto)=>{
+    doc.setFont("helvetica","bold"); doc.setFontSize(9);
+    const lineasTitulo = doc.splitTextToSize(titulo2, W-8);
+    doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+    const lineasTexto = doc.splitTextToSize(texto, W-8);
+    const altoCaja = 6 + lineasTitulo.length*4.5 + lineasTexto.length*4 + 6;
+    check(altoCaja);
+    doc.setFillColor(...rgb);
+    doc.roundedRect(M, y-4, W, altoCaja, 2, 2, "F");
+    let yy=y+2;
+    doc.setTextColor(...rgbTexto);
+    doc.setFont("helvetica","bold"); doc.setFontSize(9);
+    lineasTitulo.forEach(l=>{ doc.text(l, M+4, yy); yy+=4.5; });
+    doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+    lineasTexto.forEach(l=>{ doc.text(l, M+4, yy); yy+=4; });
+    y += altoCaja + 6;
+  };
+
+  titulo("Verificación de datos del socio");
+  tabla([
+    ["Nº Socio", socio.numero],
+    ["Nombre completo", `${socio.nombre} ${socio.apellidos}`],
+    ["DNI / NIE", socio.dni||"—"],
+    ["Fecha nacimiento", fmtF(socio.fecha_nac)],
+    ["Teléfono", socio.telefono==="512512"?"(pendiente)":socio.telefono||"—"],
+    ["Email", socio.email||"—"],
+    ["Municipio", socio.municipio||"—"],
+    ["Tipo", socio.tipo],
+    ["Cargo", socio.cargo],
+    ["Acciones Levante", socio.tiene_acciones?(socio.num_acciones||1)+" acción/es":"No"],
+    ["Nº Abonado", socio.es_abonado?(socio.num_abonado||"Sí"):"No abonado/a"],
+  ]);
+
+  titulo("Consentimientos otorgados");
+  tabla([
+    ["Tratamiento de datos (obligatorio)", si_no(socio.rgpd||socio.consent_datos)],
+    ["Foto comunicación interna", si_no(socio.consent_foto_interna)],
+    ["Foto redes sociales", si_no(socio.consent_foto_rrss)],
+    ["Foto web y materiales", si_no(socio.consent_foto_web)],
+    ["Foto cesión Levante UD/Federación", si_no(socio.consent_foto_levante)],
+    ["Comunicaciones promocionales peña", si_no(socio.consent_promo_pena)],
+    ["Info patrocinadores", si_no(socio.consent_patrocinadores)],
+    ["Grupo WhatsApp", si_no(socio.consent_whatsapp)],
+  ]);
+
+  caja("", `Datos verificados digitalmente el ${ahora}. El socio ha confirmado que sus datos son correctos a través del portal de verificación de la Peña Levantinista La Rana Mecánica.`,
+    [240,253,244],[22,101,52]);
+
+  caja("INFORMACIÓN BÁSICA SOBRE PROTECCIÓN DE DATOS",
+    "Responsable: Peña Levantinista La Rana Mecánica (Godella-Rocafort). "+
+    "Finalidad: Gestión de la relación asociativa (altas/bajas, cuotas, comunicaciones operativas, administración interna y cumplimiento de obligaciones legales). "+
+    "Legitimación: Consentimiento del interesado y ejecución del vínculo asociativo. "+
+    "Destinatarios: Levante UD/Fundación Levante UD y Federación de Peñas; Administraciones Públicas; entidades bancarias; aseguradoras; proveedores tecnológicos como encargados del tratamiento. "+
+    "Plazo: Mientras se mantenga la condición de socio y, tras la baja, durante los plazos legales de conservación. "+
+    "Derechos: acceso, rectificación, supresión, oposición, limitación y portabilidad en penyaranamecanica@gmail.com. Puede reclamar ante la AEPD (www.aepd.es). "+
+    "La negativa a autorizar imágenes no impide ser socio. Los consentimientos opcionales pueden retirarse en cualquier momento.",
+    [254,242,242],[30,41,59]);
+
+  caja("NORMAS DE USO DEL GRUPO DE WHATSAPP (si ha otorgado consentimiento)",
+    "La incorporación al grupo de WhatsApp es voluntaria. Queda prohibido compartir datos personales, fotografías o conversaciones de otros miembros fuera del grupo sin su autorización expresa. El grupo se utilizará exclusivamente para comunicaciones de la peña. El incumplimiento podrá conllevar la expulsión del grupo.",
+    [240,249,255],[12,74,110]);
+
+  caja("Nota",
+    "Este documento debe ser impreso, firmado por el socio (o su tutor legal si es menor de edad) y entregado al Secretario de la Peña para su archivo. La firma acredita que el socio ha sido informado sobre el tratamiento de sus datos y ha prestado los consentimientos indicados.",
+    [254,249,195],[113,63,18]);
+
+  // ── Firma ──
+  check(30);
+  doc.setDrawColor(226,232,240); doc.line(M,y,M+W,y); y+=8;
+  doc.setTextColor(100,116,139); doc.setFont("helvetica","normal"); doc.setFontSize(9.5);
+  doc.text("Firma del socio / tutor legal (en caso de menor):", M, y); y+=16;
+  doc.setDrawColor(148,163,184); doc.line(M,y,M+70,y); y+=5;
+  doc.setFontSize(8.5); doc.setTextColor(148,163,184);
+  doc.text(`Nombre: ${socio.nombre} ${socio.apellidos}     Fecha: ___/___/______`, M, y);
+
+  // ── Pie ──
+  const nPaginas = doc.internal.getNumberOfPages();
+  for(let i=1;i<=nPaginas;i++){
+    doc.setPage(i);
+    doc.setFontSize(8); doc.setTextColor(148,163,184);
+    doc.text("Peña Levantinista La Rana Mecánica · Godella-Rocafort · penyaranamecanica@gmail.com", 105, 290, {align:"center"});
+  }
+
+  return doc.output("blob");
+};
+
 
 // ── COMPONENTES BASE ──────────────────────────────────────
 function Pill({text,color,bg}){
@@ -169,37 +250,29 @@ function Login({onLogin,onMultiple}){
   const [error,setError]=useState("");
   const [loading,setLoading]=useState(false);
 
-  const buscar=()=>{
+  const buscar=async()=>{
     const t=tel.replace(/\s/g,"").replace(/^(\+34|0034)/,"");
     if(t.length<6){setError("Introduce un teléfono válido");return;}
     setLoading(true); setError("");
-    setTimeout(()=>{
-      setLoading(false);
-      // En producción: SELECT * FROM socios WHERE telefono=$1 (Supabase RLS)
-      const encontrados=CENSO_COMPLETO.filter(s=>s.telefono===t);
-      if(encontrados.length===0){
+    try{
+      const {data,error:err}=await supabase.from("socios").select("*").eq("telefono",t).eq("estado","activo");
+      if(err) throw err;
+      if(!data||data.length===0){
         setError("No hemos encontrado ningún peñista con ese teléfono. Contacta con la junta.");
-        return;
+        setLoading(false); return;
       }
-      // Separar adultos y menores
-      const adultos=encontrados.filter(s=>s.tipo!=="infantil");
-      const menores=encontrados.filter(s=>s.tipo==="infantil");
-      // También añadir menores vinculados por tutor_de
+      const adultos=data.filter(s=>s.tipo!=="infantil");
       const tutorAdulto=adultos[0];
-      const menoresTutor = tutorAdulto
-        ? CENSO_COMPLETO.filter(s=>s.tipo==="infantil"&&s.tutor_id===tutorAdulto.id)
-        : [];
-      const todosMenores=[...new Map([...menores,...menoresTutor].map(s=>[s.id,s])).values()];
-      // Si hay varios perfiles posibles → selector
-      const perfiles=[...adultos,...todosMenores];
-      if(perfiles.length>1){
-        onMultiple(perfiles);
-      } else if(perfiles.length===1){
-        onLogin(SOCIO_DEMO); // demo; en prod: cargar datos completos del socio
-      } else {
-        setError("No hemos encontrado ningún peñista con ese teléfono. Contacta con la junta.");
+      let menoresTutor=[];
+      if(tutorAdulto){
+        const {data:m}=await supabase.from("socios").select("*").eq("tutor_id",tutorAdulto.id).eq("estado","activo");
+        if(m) menoresTutor=m;
       }
-    },700);
+      const perfiles=[...new Map([...data,...menoresTutor].map(s=>[s.id,s])).values()];
+      if(perfiles.length>1) onMultiple(perfiles);
+      else onLogin(perfiles[0]);
+    }catch(e){ setError("Error de conexión. Inténtalo de nuevo."); }
+    setLoading(false);
   };
 
   return(
@@ -235,7 +308,7 @@ function Login({onLogin,onMultiple}){
 }
 
 // ── TAB: INICIO ───────────────────────────────────────────
-function TabInicio({socio,cuotas,actividades,setTab,onSolicitarCambio}){
+function TabInicio({socio,cuotas,actividades,loteria,setTab,onSolicitarCambio}){
   const cuotaActual=cuotas.find(c=>c.temporada==="2026/2027");
   const actInscritas=actividades.filter(a=>a.inscrito&&!a.pasada).length;
   const proxima=actividades.filter(a=>!a.pasada).sort((a,b)=>a.fecha.localeCompare(b.fecha))[0];
@@ -278,8 +351,8 @@ function TabInicio({socio,cuotas,actividades,setTab,onSolicitarCambio}){
         {[
           {icon:"💶",label:"Cuota temporada",value:cuotaActual?(!cuotaActual.pagado?"Pendiente":"Al día"):"—",color:cuotaActual?.pagado?C.verde:C.oro,bg:cuotaActual?.pagado?C.verdeLight:C.oroLight,tab:"cuotas"},
           {icon:"📅",label:"Actividades apuntado",value:`${actInscritas} próximas`,color:C.azul,bg:C.azulLight,tab:"actividades"},
-          {icon:"🎟️",label:"Lotería pendiente",value:fmt(LOTERIA_DEMO.filter(l=>!l.pagado).reduce((a,l)=>a+l.total,0)),color:C.granate,bg:C.granateLight,tab:"loteria"},
-          {icon:"📁",label:"Documentos",value:`${DOCS_DEMO.length} archivos`,color:C.gris,bg:C.grisLight,tab:"documentos"},
+          {icon:"🎟️",label:"Lotería pendiente",value:fmt(loteria.filter(l=>!l.pagado).reduce((a,l)=>a+l.total,0)),color:C.granate,bg:C.granateLight,tab:"loteria"},
+          {icon:"📁",label:"Documentos",value:"Consentimientos",color:C.gris,bg:C.grisLight,tab:"documentos"},
         ].map(k=>(
           <Card key={k.tab} onClick={()=>setTab(k.tab)} style={{background:k.bg,cursor:"pointer",padding:"14px 16px"}}>
             <div style={{fontSize:22,marginBottom:4}}>{k.icon}</div>
@@ -380,22 +453,31 @@ function TabCuotas({cuotas}){
 }
 
 // ── TAB: ACTIVIDADES ──────────────────────────────────────
-function TabActividades({actividades,setActividades}){
+function TabActividades({actividades,setActividades,socio}){
   const [modalAct,setModalAct]=useState(null);
   const [notif,setNotif]=useState(null);
+  const [procesando,setProcesando]=useState(null);
   const proximas=actividades.filter(a=>!a.pasada);
   const pasadas=actividades.filter(a=>a.pasada&&a.inscrito);
 
   const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
 
-  const apuntarse=(id)=>{
+  const apuntarse=async(id)=>{
+    setProcesando(id);
+    const {error}=await supabase.from("inscripciones").insert({actividad_id:id, socio_id:socio.id});
+    setProcesando(null);
+    if(error){ ok("❌ Error al apuntarte, inténtalo de nuevo"); return; }
     setActividades(p=>p.map(a=>a.id===id?{...a,inscrito:true,inscritos:a.inscritos+1}:a));
     setModalAct(null);
     ok("✅ Te has apuntado correctamente. La junta confirmará tu plaza.");
   };
 
-  const desapuntarse=(id)=>{
-    setActividades(p=>p.map(a=>a.id===id?{...a,inscrito:false,inscritos:a.inscritos-1}:a));
+  const desapuntarse=async(id)=>{
+    setProcesando(id);
+    const {error}=await supabase.from("inscripciones").delete().eq("actividad_id",id).eq("socio_id",socio.id);
+    setProcesando(null);
+    if(error){ ok("❌ Error al cancelar, inténtalo de nuevo"); return; }
+    setActividades(p=>p.map(a=>a.id===id?{...a,inscrito:false,inscritos:Math.max(0,a.inscritos-1)}:a));
     ok("Has cancelado tu inscripción.");
   };
 
@@ -424,10 +506,10 @@ function TabActividades({actividades,setActividades}){
                   <div style={{display:"flex",gap:8}}>
                     <button onClick={()=>setModalAct(a)} style={{padding:"7px 14px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",color:C.text}}>Ver detalles</button>
                     {!a.inscrito&&!lleno&&(
-                      <button onClick={()=>apuntarse(a.id)} style={{padding:"7px 14px",background:C.granate,border:"none",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:C.blanco}}>Apuntarme</button>
+                      <button onClick={()=>apuntarse(a.id)} disabled={procesando===a.id} style={{padding:"7px 14px",background:procesando===a.id?"#bbb":C.granate,border:"none",borderRadius:8,cursor:procesando===a.id?"not-allowed":"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:C.blanco}}>{procesando===a.id?"...":"Apuntarme"}</button>
                     )}
                     {a.inscrito&&(
-                      <button onClick={()=>desapuntarse(a.id)} style={{padding:"7px 14px",background:C.blanco,border:`1px solid ${C.rojo}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",color:C.rojo}}>Cancelar</button>
+                      <button onClick={()=>desapuntarse(a.id)} disabled={procesando===a.id} style={{padding:"7px 14px",background:C.blanco,border:`1px solid ${C.rojo}`,borderRadius:8,cursor:procesando===a.id?"not-allowed":"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",color:C.rojo}}>{procesando===a.id?"...":"Cancelar"}</button>
                     )}
                   </div>
                 </div>
@@ -531,17 +613,34 @@ function TabLoteria({loteria}){
 }
 
 // ── TAB: DOCUMENTOS ───────────────────────────────────────
-function TabDocumentos({socio,docs}){
-  const tipoInfo={
-    rgpd:        {label:"RGPD",             icon:"📋",color:C.azul,   bg:C.azulLight},
-    alta:        {label:"Solicitud alta",   icon:"✍️",color:C.verde,  bg:C.verdeLight},
-    justificante:{label:"Justificante pago",icon:"💶",color:C.oro,    bg:C.oroLight},
-    foto:        {label:"Autorización foto",icon:"📸",color:C.granate,bg:C.granateLight},
-  };
+function TabDocumentos({socio,generandoPDF,onDescargarFicha}){
+  const consentimientos=[
+    {k:"rgpd",                   l:"Tratamiento de datos (obligatorio)"},
+    {k:"consent_foto_interna",   l:"Foto comunicación interna"},
+    {k:"consent_foto_rrss",      l:"Foto redes sociales"},
+    {k:"consent_foto_web",       l:"Foto web y materiales"},
+    {k:"consent_foto_levante",   l:"Foto cesión Levante UD/Federación"},
+    {k:"consent_promo_pena",     l:"Comunicaciones promocionales peña"},
+    {k:"consent_patrocinadores", l:"Info patrocinadores"},
+    {k:"consent_whatsapp",       l:"Grupo WhatsApp"},
+  ];
 
   return(
     <div>
       <h2 style={{fontSize:18,fontWeight:700,color:C.granateDark,marginBottom:16}}>📁 Mis documentos</h2>
+
+      {/* Descargar ficha PDF */}
+      <Card style={{marginBottom:16,borderLeft:`4px solid ${C.granate}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          <div>
+            <div style={{fontWeight:700,fontSize:14,color:C.text}}>📄 Mi ficha de verificación</div>
+            <div style={{fontSize:12,color:C.muted,marginTop:2}}>Genera un PDF actualizado con tus datos y consentimientos actuales</div>
+          </div>
+          <button onClick={onDescargarFicha} disabled={generandoPDF} style={{padding:"9px 16px",background:generandoPDF?"#bbb":C.granate,color:C.blanco,border:"none",borderRadius:8,cursor:generandoPDF?"not-allowed":"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",flexShrink:0}}>
+            {generandoPDF?"Generando...":"Descargar PDF"}
+          </button>
+        </div>
+      </Card>
 
       {/* Estado RGPD */}
       <Card style={{marginBottom:16,borderLeft:`4px solid ${socio.rgpd?C.verde:C.rojo}`}}>
@@ -550,49 +649,25 @@ function TabDocumentos({socio,docs}){
           <div>
             <div style={{fontWeight:700,fontSize:14,color:C.text}}>Consentimiento RGPD</div>
             <div style={{fontSize:12,color:C.muted,marginTop:2}}>
-              {socio.rgpd?"Firmado correctamente · Tus datos están protegidos":"Pendiente de firma · Contacta con la junta"}
+              {socio.rgpd?"Firmado correctamente · Tus datos están protegidos":"Pendiente de firma · Ve a Inicio y solicita el cambio"}
             </div>
           </div>
         </div>
       </Card>
 
-      {/* Autorización foto */}
-      <Card style={{marginBottom:16,borderLeft:`4px solid ${socio.foto_aut?C.verde:C.gris}`}}>
-        <div style={{display:"flex",gap:14,alignItems:"center"}}>
-          <span style={{fontSize:28}}>{socio.foto_aut?"📸":"📵"}</span>
-          <div>
-            <div style={{fontWeight:700,fontSize:14,color:C.text}}>Autorización de fotografías</div>
-            <div style={{fontSize:12,color:C.muted,marginTop:2}}>
-              {socio.foto_aut?"Autorizado · Puedes aparecer en fotos de la peña":"No autorizado · No aparecerás en publicaciones"}
-            </div>
+      {/* Todos los consentimientos */}
+      <h3 style={{fontSize:12,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>Consentimientos otorgados</h3>
+      <Card style={{padding:0,marginBottom:16}}>
+        {consentimientos.map((c,i)=>(
+          <div key={c.k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 16px",borderBottom:i<consentimientos.length-1?`1px solid ${C.border}`:"none"}}>
+            <span style={{fontSize:13,color:C.text}}>{c.l}</span>
+            <Pill text={socio[c.k]?"✅ Sí":"❌ No"} color={socio[c.k]?C.verde:C.gris} bg={socio[c.k]?C.verdeLight:C.grisLight}/>
           </div>
-        </div>
+        ))}
       </Card>
 
-      {/* Listado documentos */}
-      <h3 style={{fontSize:12,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>Documentos disponibles</h3>
-      <div style={{display:"flex",flexDirection:"column",gap:10}}>
-        {docs.map(d=>{
-          const ti=tipoInfo[d.tipo]||{label:d.tipo,icon:"📄",color:C.gris,bg:C.grisLight};
-          return(
-            <Card key={d.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{display:"flex",gap:12,alignItems:"center"}}>
-                <div style={{width:40,height:40,borderRadius:10,background:ti.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{ti.icon}</div>
-                <div>
-                  <div style={{fontWeight:600,fontSize:14,color:C.text}}>{d.nombre}</div>
-                  <div style={{fontSize:11,color:C.muted,marginTop:2}}>{fmtFecha(d.fecha)} · <Pill text={d.estado} color={ti.color} bg={ti.bg}/></div>
-                </div>
-              </div>
-              <button style={{padding:"7px 14px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",color:C.gris,flexShrink:0}}>
-                Ver
-              </button>
-            </Card>
-          );
-        })}
-      </div>
-
-      <div style={{marginTop:16,padding:"12px 16px",background:C.azulLight,borderRadius:12,fontSize:13,color:C.azul,lineHeight:1.5}}>
-        ℹ️ Para solicitar un documento adicional o corregir alguno, contacta con la junta directiva.
+      <div style={{padding:"12px 16px",background:C.azulLight,borderRadius:12,fontSize:13,color:C.azul,lineHeight:1.5}}>
+        ℹ️ Para cambiar cualquier consentimiento, entra en el portal de verificación de datos o contacta con la junta directiva.
       </div>
     </div>
   );
@@ -604,10 +679,20 @@ function ModalCambio({open,onClose,socio}){
   const [valor,setValor]=useState("");
   const [comentario,setComentario]=useState("");
   const [enviado,setEnviado]=useState(false);
+  const [enviando,setEnviando]=useState(false);
 
-  const enviar=()=>{
+  const enviar=async()=>{
     if(!valor) return;
-    // En producción: INSERT INTO verificaciones (socio_id, campo, valor_nuevo, comentario)
+    setEnviando(true);
+    await supabase.from("verificaciones").insert({
+      socio_id: socio.id,
+      campo,
+      valor_anterior: String(socio[campo]||""),
+      valor_nuevo: valor,
+      comentario,
+      estado: "pendiente",
+    });
+    setEnviando(false);
     setEnviado(true);
   };
 
@@ -652,7 +737,7 @@ function ModalCambio({open,onClose,socio}){
           </div>
           <div style={{display:"flex",gap:10}}>
             <button onClick={onClose} style={{flex:1,padding:11,background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontWeight:600,color:C.gris,fontFamily:"inherit"}}>Cancelar</button>
-            <button onClick={enviar} style={{flex:1,padding:11,background:C.granate,border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,color:C.blanco,fontFamily:"inherit",fontSize:15}}>Enviar solicitud</button>
+            <button onClick={enviar} disabled={enviando} style={{flex:1,padding:11,background:enviando?"#bbb":C.granate,border:"none",borderRadius:8,cursor:enviando?"not-allowed":"pointer",fontWeight:700,color:C.blanco,fontFamily:"inherit",fontSize:15}}>{enviando?"Enviando...":"Enviar solicitud"}</button>
           </div>
         </div>
       )}
@@ -664,11 +749,14 @@ function ModalCambio({open,onClose,socio}){
 export default function PanelPenista(){
   const [socio,setSocio]=useState(null);
   const [tab,setTab]=useState("inicio");
-  const [cuotas,setCuotas]=useState(CUOTAS_DEMO);
-  const [actividades,setActividades]=useState(ACTIVIDADES_DEMO);
+  const [cuotas,setCuotas]=useState([]);
+  const [actividades,setActividades]=useState([]);
+  const [loteria,setLoteria]=useState([]);
+  const [cargandoDatos,setCargandoDatos]=useState(false);
   const [modalCambio,setModalCambio]=useState(false);
   const [perfilesDisponibles,setPerfilesDisponibles]=useState(null); // para selector
   const [perfilesSession,setPerfilesSession]=useState([]); // todos los perfiles del tel.
+  const [generandoPDF,setGenerandoPDF]=useState(false);
 
   const logout=()=>{setSocio(null);setTab("inicio");setPerfilesDisponibles(null);setPerfilesSession([]);};
 
@@ -679,8 +767,50 @@ export default function PanelPenista(){
 
   const handleSeleccionar=(perfil)=>{
     setPerfilesDisponibles(null);
-    setSocio(perfil); // en prod: cargar datos completos del perfil desde Supabase
+    setSocio(perfil);
     setTab("inicio");
+  };
+
+  // Cargar cuotas, actividades+inscripciones y lotería del socio activo
+  useEffect(()=>{
+    if(!socio) return;
+    let cancelado=false;
+    (async()=>{
+      setCargandoDatos(true);
+      const [cuotasRes, actRes, inscRes, insTodasRes, loteriaRes] = await Promise.all([
+        supabase.from("cuotas").select("*").eq("socio_id",socio.id).order("temporada",{ascending:false}),
+        supabase.from("actividades").select("*").order("fecha",{ascending:true}),
+        supabase.from("inscripciones").select("actividad_id").eq("socio_id",socio.id),
+        supabase.from("inscripciones").select("actividad_id"),
+        supabase.from("loteria").select("*").eq("socio_id",socio.id).order("id",{ascending:false}),
+      ]);
+      if(cancelado) return;
+      const misInscripciones = new Set((inscRes.data||[]).map(i=>i.actividad_id));
+      const conteoPorActividad = {};
+      (insTodasRes.data||[]).forEach(i=>{ conteoPorActividad[i.actividad_id]=(conteoPorActividad[i.actividad_id]||0)+1; });
+      const hoyStr = new Date().toISOString().split("T")[0];
+      const actividadesFinal = (actRes.data||[]).map(a=>({
+        ...a,
+        inscrito: misInscripciones.has(a.id),
+        inscritos: conteoPorActividad[a.id]||0,
+        pasada: a.fecha < hoyStr,
+      }));
+      setCuotas(cuotasRes.data||[]);
+      setActividades(actividadesFinal);
+      setLoteria(loteriaRes.data||[]);
+      setCargandoDatos(false);
+    })();
+    return ()=>{cancelado=true;};
+  },[socio?.id]);
+
+  const descargarFicha=async()=>{
+    setGenerandoPDF(true);
+    try{
+      const blob=await generarPDFBlob(socio);
+      const url=URL.createObjectURL(blob);
+      window.open(url,"_blank");
+    }catch(e){ console.error("Error generando PDF:",e); alert("No se ha podido generar el PDF, inténtalo de nuevo."); }
+    setGenerandoPDF(false);
   };
 
   // Perfiles disponibles para cambiar (el propio + tutelados)
@@ -712,11 +842,15 @@ export default function PanelPenista(){
 
       {/* CONTENIDO */}
       <div style={{flex:1,maxWidth:560,width:"100%",margin:"0 auto",padding:"16px 14px 90px"}}>
-        {tab==="inicio"     &&<TabInicio      socio={socio} cuotas={cuotas} actividades={actividades} setTab={setTab} onSolicitarCambio={()=>setModalCambio(true)}/>}
-        {tab==="cuotas"     &&<TabCuotas      cuotas={cuotas}/>}
-        {tab==="actividades"&&<TabActividades actividades={actividades} setActividades={setActividades}/>}
-        {tab==="loteria"    &&<TabLoteria     loteria={LOTERIA_DEMO}/>}
-        {tab==="documentos" &&<TabDocumentos  socio={socio} docs={DOCS_DEMO}/>}
+        {cargandoDatos?(
+          <div style={{textAlign:"center",padding:"60px 0",color:C.muted}}>Cargando tus datos...</div>
+        ):(<>
+          {tab==="inicio"     &&<TabInicio      socio={socio} cuotas={cuotas} actividades={actividades} loteria={loteria} setTab={setTab} onSolicitarCambio={()=>setModalCambio(true)}/>}
+          {tab==="cuotas"     &&<TabCuotas      cuotas={cuotas}/>}
+          {tab==="actividades"&&<TabActividades actividades={actividades} setActividades={setActividades} socio={socio}/>}
+          {tab==="loteria"    &&<TabLoteria     loteria={loteria}/>}
+          {tab==="documentos" &&<TabDocumentos  socio={socio} generandoPDF={generandoPDF} onDescargarFicha={descargarFicha}/>}
+        </>)}
       </div>
 
       {/* BARRA INFERIOR DE NAVEGACIÓN (estilo app móvil) */}
