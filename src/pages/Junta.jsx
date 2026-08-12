@@ -76,6 +76,7 @@ const TABS = [
   {id:"solicitudes",  label:"Solicitudes",   icon:"📥"},
   {id:"verificaciones",label:"Verificaciones",icon:"✏️"},
   {id:"cuotas",       label:"Cuotas",        icon:"💶"},
+  {id:"loteria",      label:"Lotería",       icon:"🎟️"},
   {id:"actividades",  label:"Actividades",   icon:"📅"},
   {id:"tesoreria",    label:"Tesorería",     icon:"📒"},
   {id:"configuracion",label:"Config.",       icon:"⚙️"},
@@ -861,6 +862,189 @@ function Cuotas({socios,cuotas,setCuotas}){
 }
 
 // ══════════════════════════════════════════════════════════
+// LOTERÍA
+// ══════════════════════════════════════════════════════════
+function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
+  const [modal,setModal]=useState(false);
+  const [modalDevol,setModalDevol]=useState(null); // fila en la que se edita devueltos
+  const [devueltosTemp,setDevueltosTemp]=useState("");
+  const [filtro,setFiltro]=useState("pendientes");
+  const [form,setForm]=useState({socio_id:"",concepto:"Lotería Navidad",decimos_de:"",entregados:1,precio_base:20,recargo:0});
+  const [notif,setNotif]=useState(null);
+  const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
+
+  const getSocio=(id)=>socios.find(s=>s.id===Number(id));
+  const vendidos=(l)=>Math.max(0,(Number(l.entregados)||0)-(Number(l.devueltos)||0));
+  const importeCalc=(l)=>vendidos(l)*((Number(l.precio_base)||0)+(Number(l.recargo)||0));
+
+  const filtradas=loteria.filter(l=>{
+    if(filtro==="pagadas") return l.pagado;
+    if(filtro==="pendientes") return !l.pagado;
+    return true;
+  }).sort((a,b)=>a.pagado-b.pagado);
+
+  const cobrado=loteria.filter(l=>l.pagado).reduce((a,l)=>a+Number(l.importe_total||0),0);
+  const pendiente=loteria.filter(l=>!l.pagado).reduce((a,l)=>a+importeCalc(l),0);
+
+  // Resumen agregado por peñista
+  const resumenPorSocio = Object.values(
+    loteria.reduce((acc,l)=>{
+      const key=l.socio_id;
+      if(!acc[key]) acc[key]={socio_id:key, entregados:0, devueltos:0, vendidos:0, aLiquidar:0, liquidado:0};
+      acc[key].entregados+=Number(l.entregados)||0;
+      acc[key].devueltos+=Number(l.devueltos)||0;
+      acc[key].vendidos+=vendidos(l);
+      if(l.pagado) acc[key].liquidado+=Number(l.importe_total||0);
+      else acc[key].aLiquidar+=importeCalc(l);
+      return acc;
+    },{})
+  ).sort((a,b)=>b.aLiquidar-a.aLiquidar);
+
+  const guardar=async()=>{
+    if(!form.socio_id) return;
+    const entregados=Number(form.entregados)||0, precio_base=Number(form.precio_base)||0, recargo=Number(form.recargo)||0;
+    const {data,error}=await supabase.from("loteria").insert([{
+      socio_id:Number(form.socio_id), concepto:form.concepto, decimos_de:form.decimos_de||null,
+      entregados, devueltos:0, precio_base, recargo,
+      unidades:entregados, precio_und:precio_base, // se rellenan también las columnas antiguas por compatibilidad
+      importe_total:entregados*(precio_base+recargo),
+      pagado:false, fecha_pago:null,
+    }]).select();
+    if(error){ok("❌ Error");return;}
+    setLoteria(p=>[...p,...data]);
+    setModal(false);
+    ok("✅ Lotería repartida");
+  };
+
+  const guardarDevueltos=async()=>{
+    const l=modalDevol;
+    const devueltos=Math.max(0,Math.min(Number(devueltosTemp)||0, l.entregados));
+    await supabase.from("loteria").update({devueltos}).eq("id",l.id);
+    setLoteria(p=>p.map(x=>x.id===l.id?{...x,devueltos}:x));
+    setModalDevol(null);
+    ok("✅ Devolución registrada");
+  };
+
+  const liquidar=async(l)=>{
+    const importeFinal=importeCalc(l);
+    const socio=getSocio(l.socio_id);
+    await supabase.from("loteria").update({pagado:true,fecha_pago:hoy,importe_total:importeFinal}).eq("id",l.id);
+    setLoteria(p=>p.map(x=>x.id===l.id?{...x,pagado:true,fecha_pago:hoy,importe_total:importeFinal}:x));
+
+    // Crear ingreso automático en Tesorería del ejercicio activo
+    const ejercicioActivo=ejercicios.find(e=>e.nombre===TEMPORADA_ACTUAL)||ejercicios[ejercicios.length-1];
+    if(ejercicioActivo && importeFinal>0){
+      const mov={
+        tipo:"ingreso",
+        concepto:`${l.concepto}${socio?` · ${socio.nombre} ${socio.apellidos}`:""}`,
+        categoria: l.concepto.toLowerCase().includes("niño")?"Lotería Niño":"Lotería Navidad",
+        importe: importeFinal, fecha: hoy, ejercicio_id: ejercicioActivo.id,
+      };
+      const {data:movData}=await supabase.from("movimientos_ejercicio").insert([mov]).select();
+      if(movData) setMovimientos(prev=>[...prev,...movData]);
+    }
+    ok(`✅ Liquidado · ingreso añadido a Tesorería (${TEMPORADA_ACTUAL})`);
+  };
+
+  return(<div>
+    {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.verde,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14}}>{notif}</div>}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:12}}>
+      <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark}}>🎟️ Lotería</h2>
+      <Btn onClick={()=>setModal(true)}>+ Repartir lotería</Btn>
+    </div>
+    <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}>
+      <KPI label="Liquidado" value={fmt(cobrado)} color={C.verde} icon="✅"/>
+      <KPI label="Pendiente de liquidar" value={fmt(pendiente)} color={C.oro} icon="⏳"/>
+    </div>
+    <div style={{display:"flex",gap:8,marginBottom:14}}>
+      {["todos","pagadas","pendientes"].map(f=>(
+        <button key={f} onClick={()=>setFiltro(f)} style={{padding:"7px 14px",borderRadius:20,border:"none",cursor:"pointer",fontWeight:600,fontSize:12,background:filtro===f?C.granate:"#f0f0f0",color:filtro===f?C.blanco:C.gris,fontFamily:"inherit"}}>
+          {f==="todos"?"Todas":f==="pagadas"?"Liquidadas":"Pendientes"}
+        </button>
+      ))}
+    </div>
+    <Card style={{padding:0,marginBottom:28}}>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>{["Socio","Concepto","Entreg.","Devuel.","Vend.","Precio+Rec.","A liquidar","Estado",""].map(h=><TH key={h}>{h}</TH>)}</tr></thead>
+          <tbody>
+            {filtradas.map(l=>{
+              const s=getSocio(l.socio_id);
+              return(<tr key={l.id}>
+                <TD style={{fontWeight:600}}>{s?`${s.nombre} ${s.apellidos}`:"—"}<br/><span style={{fontSize:11,color:C.muted}}>{s?.numero}</span></TD>
+                <TD>{l.concepto}{l.decimos_de?<><br/><span style={{fontSize:11,color:C.muted}}>Décimos de: {l.decimos_de}</span></>:null}</TD>
+                <TD style={{fontFamily:"monospace",fontSize:12}}>{l.entregados}</TD>
+                <TD style={{fontFamily:"monospace",fontSize:12}}>
+                  {l.devueltos}
+                  {!l.pagado&&<button onClick={()=>{setModalDevol(l);setDevueltosTemp(String(l.devueltos||0));}} style={{marginLeft:6,background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:11,textDecoration:"underline",fontFamily:"inherit"}}>editar</button>}
+                </TD>
+                <TD style={{fontFamily:"monospace",fontSize:12,fontWeight:700}}>{vendidos(l)}</TD>
+                <TD style={{fontFamily:"monospace",fontSize:12,color:C.gris}}>{fmt(l.precio_base)}+{fmt(l.recargo)}</TD>
+                <TD style={{fontWeight:700,color:l.pagado?C.verde:C.oro}}>{fmt(l.pagado?l.importe_total:importeCalc(l))}</TD>
+                <TD>{l.pagado?<Pill text="✓ Liquidada" color={C.verde} bg={C.verdeLight}/>:<Pill text="⏳ Pendiente" color={C.oro} bg={C.oroLight}/>}</TD>
+                <TD>{!l.pagado&&<Btn small color={C.verde} onClick={()=>liquidar(l)}>✓ Liquidar</Btn>}</TD>
+              </tr>);
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+
+    <h3 style={{fontSize:14,fontWeight:700,color:C.gris,marginBottom:10}}>Resumen por peñista</h3>
+    <Card style={{padding:0}}>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>{["Peñista","Entregados","Devueltos","Vendidos","A liquidar","Liquidado"].map(h=><TH key={h}>{h}</TH>)}</tr></thead>
+          <tbody>
+            {resumenPorSocio.map(r=>{
+              const s=getSocio(r.socio_id);
+              return(<tr key={r.socio_id}>
+                <TD style={{fontWeight:600}}>{s?`${s.nombre} ${s.apellidos}`:"—"} <span style={{fontFamily:"monospace",color:C.muted,fontSize:11}}>{s?.numero}</span></TD>
+                <TD style={{fontFamily:"monospace"}}>{r.entregados}</TD>
+                <TD style={{fontFamily:"monospace"}}>{r.devueltos}</TD>
+                <TD style={{fontFamily:"monospace",fontWeight:700}}>{r.vendidos}</TD>
+                <TD style={{fontWeight:700,color:C.oro}}>{r.aLiquidar>0?fmt(r.aLiquidar):"—"}</TD>
+                <TD style={{fontWeight:700,color:C.verde}}>{r.liquidado>0?fmt(r.liquidado):"—"}</TD>
+              </tr>);
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+
+    <Modal open={modal} onClose={()=>setModal(false)} title="Repartir lotería">
+      <Select label="Socio" value={form.socio_id} onChange={v=>setF("socio_id",v)} required
+        options={[{value:"",label:"— Selecciona socio —"},...socios.filter(s=>s.estado==="activo").map(s=>({value:s.id,label:`${s.nombre} ${s.apellidos} (${s.numero})`}))]}/>
+      <Select label="Concepto" value={form.concepto} onChange={v=>setF("concepto",v)} options={["Lotería Navidad","Lotería Niño","Rifa","Otro sorteo"]}/>
+      <Input label="Décimos de (opcional)" value={form.decimos_de} onChange={v=>setF("decimos_de",v)} placeholder="Ej: nº de décimo, referencia..."/>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"0 10px"}}>
+        <Input label="Entregados" value={form.entregados} onChange={v=>setF("entregados",v)} type="number"/>
+        <Input label="Precio base (€)" value={form.precio_base} onChange={v=>setF("precio_base",v)} type="number"/>
+        <Input label="Recargo (€)" value={form.recargo} onChange={v=>setF("recargo",v)} type="number"/>
+      </div>
+      <div style={{fontSize:13,color:C.muted,marginBottom:16}}>Si vende todos: <strong style={{color:C.text}}>{fmt((Number(form.entregados)||0)*((Number(form.precio_base)||0)+(Number(form.recargo)||0)))}</strong> a liquidar</div>
+      <div style={{display:"flex",gap:10}}>
+        <Btn outline onClick={()=>setModal(false)} style={{flex:1}}>Cancelar</Btn>
+        <Btn onClick={guardar} style={{flex:1}}>Repartir</Btn>
+      </div>
+    </Modal>
+
+    <Modal open={!!modalDevol} onClose={()=>setModalDevol(null)} title="Registrar devolución">
+      {modalDevol&&(<>
+        <p style={{fontSize:13,color:C.gris,marginBottom:14}}>Entregados: <strong>{modalDevol.entregados}</strong></p>
+        <Input label="Nº devueltos (no vendidos)" value={devueltosTemp} onChange={setDevueltosTemp} type="number"/>
+        <div style={{fontSize:13,color:C.muted,marginBottom:16}}>Vendidos: <strong style={{color:C.text}}>{Math.max(0,modalDevol.entregados-(Number(devueltosTemp)||0))}</strong></div>
+        <div style={{display:"flex",gap:10}}>
+          <Btn outline onClick={()=>setModalDevol(null)} style={{flex:1}}>Cancelar</Btn>
+          <Btn onClick={guardarDevueltos} style={{flex:1}}>Guardar</Btn>
+        </div>
+      </>)}
+    </Modal>
+  </div>);
+}
+
+// ══════════════════════════════════════════════════════════
 // ACTIVIDADES
 // ══════════════════════════════════════════════════════════
 function Actividades({socios,actividades,setActividades}){
@@ -1170,6 +1354,7 @@ export default function Junta(){
   const [loading,setLoading]=useState(true);
   const [socios,setSocios]=useState([]);
   const [cuotas,setCuotas]=useState([]);
+  const [loteria,setLoteria]=useState([]);
   const [actividades,setActividades]=useState([]);
   const [solicitudes,setSolicitudes]=useState([]);
   const [verificaciones,setVerificaciones]=useState([]);
@@ -1183,11 +1368,12 @@ export default function Junta(){
       setLoading(true);
       try{
         const [
-          {data:s},{data:c},{data:a},{data:sol},{data:ver},
+          {data:s},{data:c},{data:lot},{data:a},{data:sol},{data:ver},
           {data:ej},{data:mov},{data:tar}
         ] = await Promise.all([
           supabase.from("socios").select("*").order("numero"),
           supabase.from("cuotas").select("*").order("created_at",{ascending:false}),
+          supabase.from("loteria").select("*").order("created_at",{ascending:false}),
           supabase.from("actividades").select("*").order("fecha"),
           supabase.from("solicitudes_alta").select("*").order("created_at",{ascending:false}),
           supabase.from("verificaciones").select("*").order("created_at",{ascending:false}),
@@ -1195,7 +1381,7 @@ export default function Junta(){
           supabase.from("movimientos_ejercicio").select("*").order("fecha"),
           supabase.from("tarifas").select("*").order("id"),
         ]);
-        setSocios(s||[]); setCuotas(c||[]); setActividades(a||[]);
+        setSocios(s||[]); setCuotas(c||[]); setLoteria(lot||[]); setActividades(a||[]);
         setSolicitudes(sol||[]); setVerificaciones(ver||[]);
         setEjercicios(ej||[]); setMovimientos(mov||[]); setTarifas(tar||[]);
       }catch(e){
@@ -1237,6 +1423,7 @@ export default function Junta(){
       case "solicitudes":   return <Solicitudes solicitudes={solicitudes} setSolicitudes={setSolicitudes} socios={socios} setSocios={setSocios} setCuotas={setCuotas}/>;
       case "verificaciones":return <Verificaciones verificaciones={verificaciones} setVerificaciones={setVerificaciones} socios={socios} setSocios={setSocios}/>;
       case "cuotas":        return <Cuotas socios={socios} cuotas={cuotas} setCuotas={setCuotas}/>;
+      case "loteria":       return <Loteria socios={socios} loteria={loteria} setLoteria={setLoteria} ejercicios={ejercicios} setMovimientos={setMovimientos}/>;
       case "actividades":   return <Actividades socios={socios} actividades={actividades} setActividades={setActividades}/>;
       case "tesoreria":     return <Tesoreria ejercicios={ejercicios} setEjercicios={setEjercicios} movimientos={movimientos} setMovimientos={setMovimientos}/>;
       case "configuracion": return <Configuracion tarifas={tarifas} setTarifas={setTarifas}/>;

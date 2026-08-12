@@ -200,9 +200,8 @@ function Modal({open,onClose,title,children}){
 
 const TABS=[
   {id:"inicio",    label:"Inicio",      icon:"🏠"},
-  {id:"cuotas",    label:"Mi cuota",    icon:"💶"},
+  {id:"cuotas",    label:"Mis pagos",   icon:"💶"},
   {id:"actividades",label:"Actividades",icon:"📅"},
-  {id:"loteria",   label:"Lotería",     icon:"🎟️"},
   {id:"documentos",label:"Documentos",  icon:"📁"},
 ];
 
@@ -486,7 +485,7 @@ function TabInicio({socio,cuotas,actividades,loteria,setTab,onSolicitarCambio}){
         {[
           {icon:"💶",label:"Cuota temporada",value:cuotaActual?(!cuotaActual.pagado?"Pendiente":"Al día"):"—",color:cuotaActual?.pagado?C.verde:C.oro,bg:cuotaActual?.pagado?C.verdeLight:C.oroLight,tab:"cuotas"},
           {icon:"📅",label:"Actividades apuntado",value:`${actInscritas} próximas`,color:C.azul,bg:C.azulLight,tab:"actividades"},
-          {icon:"🎟️",label:"Lotería pendiente",value:fmt(loteria.filter(l=>!l.pagado).reduce((a,l)=>a+l.total,0)),color:C.granate,bg:C.granateLight,tab:"loteria"},
+          {icon:"🎟️",label:"Lotería pendiente",value:fmt(loteria.filter(l=>!l.pagado).reduce((a,l)=>{const v=Math.max(0,(Number(l.entregados)||0)-(Number(l.devueltos)||0));return a+v*((Number(l.precio_base)||0)+(Number(l.recargo)||0));},0)),color:C.granate,bg:C.granateLight,tab:"cuotas"},
           {icon:"📁",label:"Documentos",value:"Consentimientos",color:C.gris,bg:C.grisLight,tab:"documentos"},
         ].map(k=>(
           <Card key={k.tab} onClick={()=>setTab(k.tab)} style={{background:k.bg,cursor:"pointer",padding:"14px 16px"}}>
@@ -538,26 +537,36 @@ function TabInicio({socio,cuotas,actividades,loteria,setTab,onSolicitarCambio}){
   );
 }
 
-// ── TAB: CUOTAS ───────────────────────────────────────────
-function TabCuotas({cuotas}){
-  const total=cuotas.reduce((a,c)=>a+c.importe,0);
-  const cobrado=cuotas.filter(c=>c.pagado).reduce((a,c)=>a+c.importe,0);
+// ── TAB: MIS PAGOS (cuotas + lotería) ─────────────────────
+function TabCuotas({cuotas,loteria}){
+  const totalCuotas=cuotas.reduce((a,c)=>a+Number(c.importe),0);
+  const cobradoCuotas=cuotas.filter(c=>c.pagado).reduce((a,c)=>a+Number(c.importe),0);
+  const importeLoteria=(l)=>{
+    const vendidos=Math.max(0,(Number(l.entregados)||0)-(Number(l.devueltos)||0));
+    return l.pagado?Number(l.importe_total||0):vendidos*((Number(l.precio_base)||0)+(Number(l.recargo)||0));
+  };
+  const totalLoteria=loteria.reduce((a,l)=>a+importeLoteria(l),0);
+  const cobradoLoteria=loteria.filter(l=>l.pagado).reduce((a,l)=>a+Number(l.importe_total||0),0);
+  const totalGeneral=totalCuotas+totalLoteria;
+  const cobradoGeneral=cobradoCuotas+cobradoLoteria;
 
   return(
     <div>
-      <h2 style={{fontSize:18,fontWeight:700,color:C.granateDark,marginBottom:16}}>💶 Mis cuotas</h2>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+      <h2 style={{fontSize:18,fontWeight:700,color:C.granateDark,marginBottom:16}}>💶 Mis pagos</h2>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:20}}>
         <Card style={{background:C.verdeLight,padding:"14px 16px"}}>
           <div style={{fontSize:11,color:C.verde,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Pagado</div>
-          <div style={{fontSize:24,fontWeight:800,color:C.verde}}>{fmt(cobrado)}</div>
+          <div style={{fontSize:24,fontWeight:800,color:C.verde}}>{fmt(cobradoGeneral)}</div>
         </Card>
         <Card style={{background:C.oroLight,padding:"14px 16px"}}>
           <div style={{fontSize:11,color:C.oro,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Pendiente</div>
-          <div style={{fontSize:24,fontWeight:800,color:C.oro}}>{fmt(total-cobrado)}</div>
+          <div style={{fontSize:24,fontWeight:800,color:C.oro}}>{fmt(totalGeneral-cobradoGeneral)}</div>
         </Card>
       </div>
 
-      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      <h3 style={{fontSize:12,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>Cuotas</h3>
+      <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:cuotas.length?24:8}}>
+        {cuotas.length===0&&<p style={{color:C.muted,fontSize:13}}>No tienes cuotas registradas todavía.</p>}
         {cuotas.map(c=>(
           <Card key={c.id} style={{borderLeft:`4px solid ${c.pagado?C.verde:C.oro}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
@@ -582,6 +591,41 @@ function TabCuotas({cuotas}){
             )}
           </Card>
         ))}
+      </div>
+
+      <h3 style={{fontSize:12,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>Lotería</h3>
+      <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        {loteria.length===0&&<p style={{color:C.muted,fontSize:13}}>No tienes lotería registrada todavía.</p>}
+        {loteria.map(l=>{
+          const vendidos=Math.max(0,(Number(l.entregados)||0)-(Number(l.devueltos)||0));
+          const importe=l.pagado?Number(l.importe_total):vendidos*((Number(l.precio_base)||0)+(Number(l.recargo)||0));
+          return(
+          <Card key={l.id} style={{borderLeft:`4px solid ${l.pagado?C.verde:C.oro}`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:15,color:C.text}}>🎟️ {l.concepto}</div>
+                <div style={{fontSize:12,color:C.muted,marginTop:2}}>
+                  {l.entregados} entregados · {l.devueltos||0} devueltos · {vendidos} vendidos
+                  {l.decimos_de?` · ${l.decimos_de}`:""}
+                </div>
+                <div style={{fontSize:11,color:C.muted,marginTop:1}}>Precio: {fmt(l.precio_base)} + recargo {fmt(l.recargo)}/ud</div>
+              </div>
+              <div style={{textAlign:"right"}}>
+                <div style={{fontSize:20,fontWeight:800,color:l.pagado?C.verde:C.oro}}>{fmt(importe)}</div>
+                <Pill text={l.pagado?"✅ Liquidado":"⏳ Pendiente"} color={l.pagado?C.verde:C.oro} bg={l.pagado?C.verdeLight:C.oroLight}/>
+              </div>
+            </div>
+            {l.pagado?(
+              <div style={{fontSize:12,color:C.gris,background:C.grisLight,borderRadius:8,padding:"8px 12px"}}>
+                📅 Liquidado el {fmtFecha(l.fecha_pago)}
+              </div>
+            ):(
+              <div style={{background:C.oroLight,borderRadius:8,padding:"10px 12px",fontSize:13,color:"#7a5c00"}}>
+                💡 Entrega lo vendido y lo no vendido en la próxima reunión de la peña para liquidar.
+              </div>
+            )}
+          </Card>
+          );})}
       </div>
     </div>
   );
@@ -702,54 +746,6 @@ function TabActividades({actividades,setActividades,socio}){
           </div>
         )}
       </Modal>
-    </div>
-  );
-}
-
-// ── TAB: LOTERÍA ──────────────────────────────────────────
-function TabLoteria({loteria}){
-  const totalPend=loteria.filter(l=>!l.pagado).reduce((a,l)=>a+l.importe_total,0);
-  const totalPag=loteria.filter(l=>l.pagado).reduce((a,l)=>a+l.importe_total,0);
-
-  return(
-    <div>
-      <h2 style={{fontSize:18,fontWeight:700,color:C.granateDark,marginBottom:16}}>🎟️ Mi lotería</h2>
-      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-        <Card style={{background:C.verdeLight,padding:"14px 16px"}}>
-          <div style={{fontSize:11,color:C.verde,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Pagado</div>
-          <div style={{fontSize:24,fontWeight:800,color:C.verde}}>{fmt(totalPag)}</div>
-        </Card>
-        <Card style={{background:C.oroLight,padding:"14px 16px"}}>
-          <div style={{fontSize:11,color:C.oro,fontWeight:700,textTransform:"uppercase",marginBottom:4}}>Pendiente</div>
-          <div style={{fontSize:24,fontWeight:800,color:C.oro}}>{fmt(totalPend)}</div>
-        </Card>
-      </div>
-
-      <div style={{display:"flex",flexDirection:"column",gap:12}}>
-        {loteria.map(l=>(
-          <Card key={l.id} style={{borderLeft:`4px solid ${l.pagado?C.verde:C.oro}`}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
-              <div>
-                <div style={{fontWeight:700,fontSize:15,color:C.text}}>🎟️ {l.concepto}</div>
-                <div style={{fontSize:12,color:C.muted,marginTop:2}}>{l.unidades} décimo{l.unidades>1?"s":""} × {fmt(l.precio_und)}/ud{l.decimos_de?` · Décimos de: ${l.decimos_de}`:""}</div>
-              </div>
-              <div style={{textAlign:"right"}}>
-                <div style={{fontSize:20,fontWeight:800,color:l.pagado?C.verde:C.oro}}>{fmt(l.importe_total)}</div>
-                <Pill text={l.pagado?"✅ Pagado":"⏳ Pendiente"} color={l.pagado?C.verde:C.oro} bg={l.pagado?C.verdeLight:C.oroLight}/>
-              </div>
-            </div>
-            {l.pagado?(
-              <div style={{fontSize:12,color:C.gris,background:C.grisLight,borderRadius:8,padding:"8px 12px"}}>
-                📅 Pagado el {fmtFecha(l.fecha_pago)}
-              </div>
-            ):(
-              <div style={{background:C.oroLight,borderRadius:8,padding:"10px 12px",fontSize:13,color:"#7a5c00"}}>
-                💡 Entrega el importe en la próxima reunión de la peña o por Bizum a la junta.
-              </div>
-            )}
-          </Card>
-        ))}
-      </div>
     </div>
   );
 }
@@ -1012,9 +1008,8 @@ export default function PanelPenista(){
           <div style={{textAlign:"center",padding:"60px 0",color:C.muted}}>Cargando tus datos...</div>
         ):(<>
           {tab==="inicio"     &&<TabInicio      socio={socio} cuotas={cuotas} actividades={actividades} loteria={loteria} setTab={setTab} onSolicitarCambio={()=>setModalCambio(true)}/>}
-          {tab==="cuotas"     &&<TabCuotas      cuotas={cuotas}/>}
+          {tab==="cuotas"     &&<TabCuotas      cuotas={cuotas} loteria={loteria}/>}
           {tab==="actividades"&&<TabActividades actividades={actividades} setActividades={setActividades} socio={socio}/>}
-          {tab==="loteria"    &&<TabLoteria     loteria={loteria}/>}
           {tab==="documentos" &&<TabDocumentos  socio={socio} generandoPDF={generandoPDF} onDescargarFicha={descargarFicha}/>}
         </>)}
       </div>
