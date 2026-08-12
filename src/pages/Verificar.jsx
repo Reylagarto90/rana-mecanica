@@ -14,47 +14,50 @@ const generarPDFHTML = (socio) => {
   const ahora = new Date().toLocaleString("es-ES");
   return `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1e293b;">
-      <div style="text-align:center; background:#8B0A3A; padding:20px; border-radius:8px; margin-bottom:20px;">
+      <div style="page-break-inside:avoid; break-inside:avoid; text-align:center; background:#8B0A3A; padding:20px; border-radius:8px; margin-bottom:20px;">
         <h1 style="color:white; margin:0; font-size:20px;">🐸 Peña Levantinista La Rana Mecánica</h1>
         <p style="color:rgba(255,255,255,0.8); margin:6px 0 0;">Godella-Rocafort · Temporada 2026/2027</p>
       </div>
 
-      <h2 style="color:#8B0A3A; border-bottom:2px solid #8B0A3A; padding-bottom:8px;">Verificación de datos del socio</h2>
-      
-      <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
-        <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600; width:40%;">Nº Socio</td><td style="padding:8px 12px;">${socio.numero}</td></tr>
-        <tr><td style="padding:8px 12px; font-weight:600;">Nombre completo</td><td style="padding:8px 12px;">${socio.nombre} ${socio.apellidos}</td></tr>
-        <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600;">DNI / NIE</td><td style="padding:8px 12px;">${socio.dni||"—"}</td></tr>
-        <tr><td style="padding:8px 12px; font-weight:600;">Fecha nacimiento</td><td style="padding:8px 12px;">${fmtF(socio.fecha_nac)}</td></tr>
-        <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600;">Teléfono</td><td style="padding:8px 12px;">${socio.telefono==="512512"?"(pendiente)":socio.telefono||"—"}</td></tr>
-        <tr><td style="padding:8px 12px; font-weight:600;">Email</td><td style="padding:8px 12px;">${socio.email||"—"}</td></tr>
-        <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600;">Municipio</td><td style="padding:8px 12px;">${socio.municipio||"—"}</td></tr>
-        <tr><td style="padding:8px 12px; font-weight:600;">Tipo</td><td style="padding:8px 12px;">${socio.tipo}</td></tr>
-        <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600;">Cargo</td><td style="padding:8px 12px;">${socio.cargo}</td></tr>
-        <tr><td style="padding:8px 12px; font-weight:600;">Acciones Levante</td><td style="padding:8px 12px;">${socio.tiene_acciones?(socio.num_acciones||1)+" acción/es":"No"}</td></tr>
-        <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600;">Nº Abonado</td><td style="padding:8px 12px;">${socio.es_abonado?(socio.num_abonado||"Sí"):"No abonado/a"}</td></tr>
-      </table>
+      <div style="page-break-inside:avoid; break-inside:avoid;">
+        <h2 style="color:#8B0A3A; border-bottom:2px solid #8B0A3A; padding-bottom:8px;">Verificación de datos del socio</h2>
+        <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+          <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600; width:40%;">Nº Socio</td><td style="padding:8px 12px;">${socio.numero}</td></tr>
+          <tr><td style="padding:8px 12px; font-weight:600;">Nombre completo</td><td style="padding:8px 12px;">${socio.nombre} ${socio.apellidos}</td></tr>
+          <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600;">DNI / NIE</td><td style="padding:8px 12px;">${socio.dni||"—"}</td></tr>
+          <tr><td style="padding:8px 12px; font-weight:600;">Fecha nacimiento</td><td style="padding:8px 12px;">${fmtF(socio.fecha_nac)}</td></tr>
+          <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600;">Teléfono</td><td style="padding:8px 12px;">${socio.telefono==="512512"?"(pendiente)":socio.telefono||"—"}</td></tr>
+          <tr><td style="padding:8px 12px; font-weight:600;">Email</td><td style="padding:8px 12px;">${socio.email||"—"}</td></tr>
+          <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600;">Municipio</td><td style="padding:8px 12px;">${socio.municipio||"—"}</td></tr>
+          <tr><td style="padding:8px 12px; font-weight:600;">Tipo</td><td style="padding:8px 12px;">${socio.tipo}</td></tr>
+          <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600;">Cargo</td><td style="padding:8px 12px;">${socio.cargo}</td></tr>
+          <tr><td style="padding:8px 12px; font-weight:600;">Acciones Levante</td><td style="padding:8px 12px;">${socio.tiene_acciones?(socio.num_acciones||1)+" acción/es":"No"}</td></tr>
+          <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600;">Nº Abonado</td><td style="padding:8px 12px;">${socio.es_abonado?(socio.num_abonado||"Sí"):"No abonado/a"}</td></tr>
+        </table>
+      </div>
 
-      <h3 style="color:#8B0A3A; border-bottom:1px solid #e2e8f0; padding-bottom:6px;">Consentimientos otorgados</h3>
-      <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
-        <tr style="background:#f8fafc;"><td style="padding:7px 12px; font-weight:600;">📋 Tratamiento de datos (obligatorio)</td><td style="padding:7px 12px;">${si_no(socio.rgpd||socio.consent_datos)}</td></tr>
-        <tr><td style="padding:7px 12px;">📸 Foto comunicación interna</td><td style="padding:7px 12px;">${si_no(socio.consent_foto_interna)}</td></tr>
-        <tr style="background:#f8fafc;"><td style="padding:7px 12px;">📱 Foto redes sociales</td><td style="padding:7px 12px;">${si_no(socio.consent_foto_rrss)}</td></tr>
-        <tr><td style="padding:7px 12px;">🌐 Foto web y materiales</td><td style="padding:7px 12px;">${si_no(socio.consent_foto_web)}</td></tr>
-        <tr style="background:#f8fafc;"><td style="padding:7px 12px;">⚽ Foto cesión Levante UD/Federación</td><td style="padding:7px 12px;">${si_no(socio.consent_foto_levante)}</td></tr>
-        <tr><td style="padding:7px 12px;">📢 Comunicaciones promocionales peña</td><td style="padding:7px 12px;">${si_no(socio.consent_promo_pena)}</td></tr>
-        <tr style="background:#f8fafc;"><td style="padding:7px 12px;">🤝 Info patrocinadores</td><td style="padding:7px 12px;">${si_no(socio.consent_patrocinadores)}</td></tr>
-        <tr><td style="padding:7px 12px;">💬 Grupo WhatsApp</td><td style="padding:7px 12px;">${si_no(socio.consent_whatsapp)}</td></tr>
-      </table>
+      <div style="page-break-inside:avoid; break-inside:avoid;">
+        <h3 style="color:#8B0A3A; border-bottom:1px solid #e2e8f0; padding-bottom:6px;">Consentimientos otorgados</h3>
+        <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+          <tr style="background:#f8fafc;"><td style="padding:7px 12px; font-weight:600;">📋 Tratamiento de datos (obligatorio)</td><td style="padding:7px 12px;">${si_no(socio.rgpd||socio.consent_datos)}</td></tr>
+          <tr><td style="padding:7px 12px;">📸 Foto comunicación interna</td><td style="padding:7px 12px;">${si_no(socio.consent_foto_interna)}</td></tr>
+          <tr style="background:#f8fafc;"><td style="padding:7px 12px;">📱 Foto redes sociales</td><td style="padding:7px 12px;">${si_no(socio.consent_foto_rrss)}</td></tr>
+          <tr><td style="padding:7px 12px;">🌐 Foto web y materiales</td><td style="padding:7px 12px;">${si_no(socio.consent_foto_web)}</td></tr>
+          <tr style="background:#f8fafc;"><td style="padding:7px 12px;">⚽ Foto cesión Levante UD/Federación</td><td style="padding:7px 12px;">${si_no(socio.consent_foto_levante)}</td></tr>
+          <tr><td style="padding:7px 12px;">📢 Comunicaciones promocionales peña</td><td style="padding:7px 12px;">${si_no(socio.consent_promo_pena)}</td></tr>
+          <tr style="background:#f8fafc;"><td style="padding:7px 12px;">🤝 Info patrocinadores</td><td style="padding:7px 12px;">${si_no(socio.consent_patrocinadores)}</td></tr>
+          <tr><td style="padding:7px 12px;">💬 Grupo WhatsApp</td><td style="padding:7px 12px;">${si_no(socio.consent_whatsapp)}</td></tr>
+        </table>
+      </div>
 
-      <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:14px; margin-bottom:20px;">
+      <div style="page-break-inside:avoid; break-inside:avoid; background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:14px; margin-bottom:20px;">
         <p style="margin:0; font-size:13px; color:#166534;">
           ✅ Datos verificados digitalmente el <strong>${ahora}</strong><br/>
           El socio ha confirmado que sus datos son correctos a través del portal de verificación de la Peña Levantinista La Rana Mecánica.
         </p>
       </div>
 
-      <div style="background:#fef2f2; border:1px solid #fca5a5; border-radius:8px; padding:16px; margin-bottom:16px; font-size:11px; color:#1e293b; line-height:1.6;">
+      <div style="page-break-inside:avoid; break-inside:avoid; background:#fef2f2; border:1px solid #fca5a5; border-radius:8px; padding:16px; margin-bottom:16px; font-size:11px; color:#1e293b; line-height:1.6;">
         <p style="font-weight:700; font-size:12px; margin:0 0 8px; color:#8B0A3A;">INFORMACIÓN BÁSICA SOBRE PROTECCIÓN DE DATOS</p>
         <table style="width:100%; border-collapse:collapse; font-size:11px;">
           <tr><td style="padding:4px 8px; font-weight:700; width:30%; vertical-align:top;">Responsable</td><td style="padding:4px 8px;">Peña Levantinista La Rana Mecánica (Godella-Rocafort)</td></tr>
@@ -67,16 +70,16 @@ const generarPDFHTML = (socio) => {
         </table>
       </div>
 
-      <div style="background:#f0f9ff; border:1px solid #7dd3fc; border-radius:8px; padding:14px; margin-bottom:20px; font-size:11px; color:#0c4a6e; line-height:1.6;">
+      <div style="page-break-inside:avoid; break-inside:avoid; background:#f0f9ff; border:1px solid #7dd3fc; border-radius:8px; padding:14px; margin-bottom:20px; font-size:11px; color:#0c4a6e; line-height:1.6;">
         <p style="font-weight:700; font-size:12px; margin:0 0 8px;">NORMAS DE USO DEL GRUPO DE WHATSAPP (si ha otorgado consentimiento)</p>
         <p style="margin:0;">La incorporación al grupo de WhatsApp de La Rana Mecánica es voluntaria. Queda prohibido compartir datos personales, fotografías o conversaciones de otros miembros fuera del grupo sin su autorización expresa. El grupo se utilizará exclusivamente para comunicaciones relacionadas con las actividades de la peña. El incumplimiento de estas normas podrá conllevar la expulsión del grupo.</p>
       </div>
 
-      <div style="background:#fef9c3; border:1px solid #fde047; border-radius:8px; padding:12px; margin-bottom:20px; font-size:11px; color:#713f12;">
+      <div style="page-break-inside:avoid; break-inside:avoid; background:#fef9c3; border:1px solid #fde047; border-radius:8px; padding:12px; margin-bottom:20px; font-size:11px; color:#713f12;">
         <strong>⚠️ Nota:</strong> Este documento debe ser impreso, firmado por el socio (o su tutor legal si es menor de edad) y entregado al Secretario de la Peña para su archivo. La firma de este documento acredita que el socio ha sido informado sobre el tratamiento de sus datos personales y ha prestado los consentimientos indicados.
       </div>
 
-      <div style="border-top:2px solid #e2e8f0; padding-top:20px; margin-top:20px;">
+      <div style="page-break-inside:avoid; break-inside:avoid; border-top:2px solid #e2e8f0; padding-top:20px; margin-top:20px;">
         <p style="font-size:13px; color:#64748b; margin-bottom:30px;">
           Firma del socio / tutor legal (en caso de menor):
         </p>
@@ -129,23 +132,19 @@ const generarYSubirPDF = async (socio, htmlDoc) => {
     // Esperar a que el navegador termine de maquetar el contenido
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
 
-    const altura = contenedor.scrollHeight;
-
     const blob = await html2pdf()
       .from(contenedor)
       .set({
-        margin: 10,
+        margin: [10, 10, 10, 10],
         filename: "ficha.pdf",
+        image: { type: "jpeg", quality: 0.98 },
         html2canvas: {
           scale: 2,
           useCORS: true,
           backgroundColor: "#ffffff",
-          width: 650,
-          height: altura,
-          windowWidth: 650,
-          windowHeight: altura,
         },
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+        pagebreak: { mode: ["css", "avoid-all"] },
       })
       .outputPdf("blob");
 
