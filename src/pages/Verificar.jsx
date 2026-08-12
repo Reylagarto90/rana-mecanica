@@ -109,22 +109,27 @@ const cargarHtml2Pdf = () => {
 // Genera el PDF a partir del HTML de la ficha y lo sube a Supabase Storage
 // (bucket privado 'fichas'). Devuelve una URL firmada válida 180 días, o null si falla.
 const generarYSubirPDF = async (socio, htmlDoc) => {
+  let contenedor = null, overlay = null;
   try {
     const html2pdf = await cargarHtml2Pdf();
-    const contenedor = document.createElement("div");
-    contenedor.innerHTML = htmlDoc;
-    contenedor.style.position = "absolute";
-    contenedor.style.top = "0";
-    contenedor.style.left = "0";
-    contenedor.style.width = "650px";
-    contenedor.style.background = "#ffffff";
-    contenedor.style.zIndex = "-9999";
-    contenedor.style.opacity = "0.01"; // 0 puro puede hacer que algunos navegadores no lo pinten
-    contenedor.style.pointerEvents = "none";
-    document.body.appendChild(contenedor);
 
-    // Esperar un frame para asegurar que el navegador ha maquetado el contenido
+    // Overlay de carga (tapa visualmente el contenido mientras se captura)
+    overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;z-index:999999;background:#8B0A3A;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui,sans-serif;color:#fff;";
+    overlay.innerHTML = `<div style="font-size:40px;margin-bottom:10px;">🐸</div><div style="font-size:15px;font-weight:600;">Generando tu ficha en PDF...</div>`;
+
+    // Contenedor real y VISIBLE (necesario para que html2canvas lo capture bien;
+    // el overlay de arriba lo tapa por completo mientras se genera)
+    contenedor = document.createElement("div");
+    contenedor.innerHTML = htmlDoc;
+    contenedor.style.cssText = "position:fixed;top:0;left:0;width:650px;background:#ffffff;z-index:999998;";
+    document.body.appendChild(contenedor);
+    document.body.appendChild(overlay);
+
+    // Esperar a que el navegador termine de maquetar el contenido
     await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    const altura = contenedor.scrollHeight;
 
     const blob = await html2pdf()
       .from(contenedor)
@@ -135,16 +140,14 @@ const generarYSubirPDF = async (socio, htmlDoc) => {
           scale: 2,
           useCORS: true,
           backgroundColor: "#ffffff",
-          scrollX: 0,
-          scrollY: -window.scrollY,
-          windowWidth: contenedor.scrollWidth,
-          windowHeight: contenedor.scrollHeight,
+          width: 650,
+          height: altura,
+          windowWidth: 650,
+          windowHeight: altura,
         },
         jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
       })
       .outputPdf("blob");
-
-    document.body.removeChild(contenedor);
 
     const nombreArchivo = `${crypto.randomUUID()}.pdf`;
     const { error: errSubida } = await supabase.storage
@@ -161,6 +164,9 @@ const generarYSubirPDF = async (socio, htmlDoc) => {
   } catch (e) {
     console.error("Error generando PDF:", e);
     return null;
+  } finally {
+    if (contenedor && contenedor.parentNode) document.body.removeChild(contenedor);
+    if (overlay && overlay.parentNode) document.body.removeChild(overlay);
   }
 };
 
