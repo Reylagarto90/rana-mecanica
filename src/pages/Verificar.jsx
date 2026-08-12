@@ -52,11 +52,26 @@ const generarPDFHTML = (socio) => {
         </p>
       </div>
 
-      <div style="background:#fef9c3; border:1px solid #fde047; border-radius:8px; padding:14px; margin-bottom:20px; font-size:12px; color:#713f12;">
-        <strong>Nota importante:</strong> Este documento debe ser impreso, firmado por el socio y entregado al Secretario de la Peña. 
-        La negativa a autorizar la publicación de imágenes no impide ser socio ni participar en las actividades.
-        Los datos serán tratados conforme al RGPD (UE) 2016/679 y la LOPDGDD.
-        Para ejercer sus derechos: <strong>penyaranamecanica@gmail.com</strong>
+      <div style="background:#fef2f2; border:1px solid #fca5a5; border-radius:8px; padding:16px; margin-bottom:16px; font-size:11px; color:#1e293b; line-height:1.6;">
+        <p style="font-weight:700; font-size:12px; margin:0 0 8px; color:#8B0A3A;">INFORMACIÓN BÁSICA SOBRE PROTECCIÓN DE DATOS</p>
+        <table style="width:100%; border-collapse:collapse; font-size:11px;">
+          <tr><td style="padding:4px 8px; font-weight:700; width:30%; vertical-align:top;">Responsable</td><td style="padding:4px 8px;">Peña Levantinista La Rana Mecánica (Godella-Rocafort)</td></tr>
+          <tr style="background:#fef9f9;"><td style="padding:4px 8px; font-weight:700; vertical-align:top;">Finalidad</td><td style="padding:4px 8px;">Gestión de la relación asociativa: altas/bajas, cuotas, comunicaciones operativas sobre actividades, administración interna y cumplimiento de obligaciones legales.</td></tr>
+          <tr><td style="padding:4px 8px; font-weight:700; vertical-align:top;">Legitimación</td><td style="padding:4px 8px;">Consentimiento del interesado y ejecución del vínculo asociativo.</td></tr>
+          <tr style="background:#fef9f9;"><td style="padding:4px 8px; font-weight:700; vertical-align:top;">Destinatarios</td><td style="padding:4px 8px;">Levante UD / Fundación Levante UD y Federación de Peñas (cuando sea necesario para acreditaciones, entradas, actos o actividades conjuntas); Administraciones Públicas (Agencia Tributaria, Ayuntamiento, Generalitat u otras, cuando exista obligación legal, subvenciones o procedimientos administrativos); Entidades bancarias (para gestión de cuotas y pagos); Aseguradoras (si determinadas actividades están aseguradas); Proveedores de servicios tecnológicos como encargados del tratamiento (alojamiento web, plataforma de gestión, almacenamiento cloud).</td></tr>
+          <tr><td style="padding:4px 8px; font-weight:700; vertical-align:top;">Plazo</td><td style="padding:4px 8px;">Mientras se mantenga la condición de socio y, tras la baja, durante los plazos legales de conservación.</td></tr>
+          <tr style="background:#fef9f9;"><td style="padding:4px 8px; font-weight:700; vertical-align:top;">Derechos</td><td style="padding:4px 8px;">Puede ejercer sus derechos de acceso, rectificación, supresión, oposición, limitación y portabilidad dirigiéndose a: <strong>penyaranamecanica@gmail.com</strong>. Tiene derecho a presentar una reclamación ante la Agencia Española de Protección de Datos (www.aepd.es).</td></tr>
+          <tr><td style="padding:4px 8px; font-weight:700; vertical-align:top;">Información adicional</td><td style="padding:4px 8px;">La negativa a autorizar la publicación de imágenes no impide ser socio ni participar normalmente en las actividades. Los consentimientos opcionales pueden retirarse en cualquier momento sin efectos retroactivos.</td></tr>
+        </table>
+      </div>
+
+      <div style="background:#f0f9ff; border:1px solid #7dd3fc; border-radius:8px; padding:14px; margin-bottom:20px; font-size:11px; color:#0c4a6e; line-height:1.6;">
+        <p style="font-weight:700; font-size:12px; margin:0 0 8px;">NORMAS DE USO DEL GRUPO DE WHATSAPP (si ha otorgado consentimiento)</p>
+        <p style="margin:0;">La incorporación al grupo de WhatsApp de La Rana Mecánica es voluntaria. Queda prohibido compartir datos personales, fotografías o conversaciones de otros miembros fuera del grupo sin su autorización expresa. El grupo se utilizará exclusivamente para comunicaciones relacionadas con las actividades de la peña. El incumplimiento de estas normas podrá conllevar la expulsión del grupo.</p>
+      </div>
+
+      <div style="background:#fef9c3; border:1px solid #fde047; border-radius:8px; padding:12px; margin-bottom:20px; font-size:11px; color:#713f12;">
+        <strong>⚠️ Nota:</strong> Este documento debe ser impreso, firmado por el socio (o su tutor legal si es menor de edad) y entregado al Secretario de la Peña para su archivo. La firma de este documento acredita que el socio ha sido informado sobre el tratamiento de sus datos personales y ha prestado los consentimientos indicados.
       </div>
 
       <div style="border-top:2px solid #e2e8f0; padding-top:20px; margin-top:20px;">
@@ -239,8 +254,28 @@ function Login({onLogin, onMultiple}){
 // ── MIS DATOS ─────────────────────────────────────────
 function MisDatos({socio, onLogout, onCorregir, onCambiarPerfil}){
   const [confirmado,setConfirmado]=useState(false);
-
   const [enviandoEmail, setEnviandoEmail] = useState(false);
+  const [consents,setConsents]=useState({
+    rgpd:             socio.rgpd||false,
+    consent_foto_interna:  socio.consent_foto_interna||false,
+    consent_foto_rrss:     socio.consent_foto_rrss||false,
+    consent_foto_web:      socio.consent_foto_web||false,
+    consent_foto_levante:  socio.consent_foto_levante||false,
+    consent_promo_pena:    socio.consent_promo_pena||false,
+    consent_patrocinadores:socio.consent_patrocinadores||false,
+    consent_whatsapp:      socio.consent_whatsapp||false,
+  });
+  const setC=(k,v)=>setConsents(c=>({...c,[k]:v}));
+
+  const descargarPDF=(s)=>{
+    const htmlDoc = generarPDFHTML(s);
+    const ventana = window.open("","_blank");
+    if(ventana){
+      ventana.document.write(htmlDoc);
+      ventana.document.close();
+      setTimeout(()=>ventana.print(),500);
+    }
+  };
 
   const confirmar=async()=>{
     setEnviandoEmail(true);
@@ -248,7 +283,17 @@ function MisDatos({socio, onLogout, onCorregir, onCambiarPerfil}){
     await supabase.from("socios").update({
       verificado:true,
       fecha_consentimiento: new Date().toISOString(),
+      rgpd: consents.rgpd,
+      consent_foto_interna:   consents.consent_foto_interna,
+      consent_foto_rrss:      consents.consent_foto_rrss,
+      consent_foto_web:       consents.consent_foto_web,
+      consent_foto_levante:   consents.consent_foto_levante,
+      consent_promo_pena:     consents.consent_promo_pena,
+      consent_patrocinadores: consents.consent_patrocinadores,
+      consent_whatsapp:       consents.consent_whatsapp,
     }).eq("id",socio.id);
+    // Actualizar el objeto socio local con los consentimientos
+    Object.assign(socio, consents);
 
     // Generar HTML del documento
     const htmlDoc = generarPDFHTML(socio);
@@ -297,7 +342,11 @@ function MisDatos({socio, onLogout, onCorregir, onCambiarPerfil}){
         <div style={{background:C.oroLight,borderRadius:10,padding:"12px",marginBottom:16,fontSize:13,color:"#7a5c00"}}>
           📋 También hemos enviado una copia a la junta directiva.
         </div>
-        <div style={{background:C.granateLight,borderRadius:10,padding:"12px",marginBottom:20,fontSize:14,color:C.granateDark,fontWeight:600}}>🐸 ¡Visca el Levante i la Rana Mecànica!</div>
+        <div style={{background:C.granateLight,borderRadius:10,padding:"12px",marginBottom:16,fontSize:14,color:C.granateDark,fontWeight:600}}>🐸 ¡Visca el Levante i la Rana Mecànica!</div>
+        <button onClick={()=>descargarPDF(socio)} style={{width:"100%",padding:13,background:C.azul,color:C.blanco,border:"none",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,fontFamily:"inherit",marginBottom:10}}>
+          📄 Descargar mi ficha en PDF
+        </button>
+        <p style={{fontSize:11,color:C.muted,marginBottom:14,lineHeight:1.5}}>Imprímela, fírmala y entrégala al Secretario de la peña.</p>
         <button onClick={onLogout} style={{width:"100%",padding:11,background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:10,cursor:"pointer",fontWeight:600,color:C.gris,fontFamily:"inherit"}}>Cerrar sesión</button>
       </div>
     </div>
@@ -374,6 +423,57 @@ function MisDatos({socio, onLogout, onCorregir, onCambiarPerfil}){
                 <div style={{fontSize:10,color:C.muted,textTransform:"uppercase",letterSpacing:0.5,marginBottom:3,fontWeight:600}}>{k}</div>
                 <div style={{fontSize:14,fontWeight:600,color:v==="—"?C.muted:C.text,wordBreak:"break-word",textTransform:"capitalize"}}>{v}</div>
               </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── CONSENTIMIENTOS ── */}
+        <div style={{background:C.blanco,borderRadius:16,padding:"20px",marginBottom:14,boxShadow:"0 2px 12px rgba(0,0,0,0.08)"}}>
+          <h3 style={{fontSize:14,fontWeight:700,color:C.granateDark,marginBottom:4}}>📋 Consentimientos</h3>
+          <p style={{fontSize:12,color:C.muted,marginBottom:14}}>Revisa y marca tus preferencias. Puedes cambiarlas en cualquier momento.</p>
+
+          {/* Obligatorio */}
+          <div style={{background:consents.rgpd?C.verdeLight:"#fff8e1",border:`2px solid ${consents.rgpd?C.verde:"#f59e0b"}`,borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+            <label style={{display:"flex",gap:10,cursor:"pointer",alignItems:"flex-start"}}>
+              <input type="checkbox" checked={consents.rgpd} onChange={e=>setC("rgpd",e.target.checked)}
+                style={{marginTop:2,width:18,height:18,accentColor:C.verde,flexShrink:0}}/>
+              <span style={{fontSize:13,color:C.text,lineHeight:1.5}}>
+                <strong>Consiento el tratamiento de mis datos</strong> para la gestión de la relación asociativa: altas/bajas, cuotas, actividades, comunicaciones operativas y obligaciones legales. <em style={{color:C.rojo}}>*Obligatorio para ser socio.</em>
+              </span>
+            </label>
+          </div>
+
+          {/* Imagen */}
+          <div style={{background:C.azulLight,border:`1px solid ${C.azul}30`,borderRadius:10,padding:"12px 14px",marginBottom:12}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.azul,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>📸 Autorización de imagen (opcional)</div>
+            <p style={{fontSize:11,color:C.gris,marginBottom:10,fontStyle:"italic"}}>Negarse no impide ser socio ni participar en las actividades.</p>
+            {[
+              ["consent_foto_interna", "Fotografías/vídeos para comunicación interna de la Peña."],
+              ["consent_foto_rrss",    "Publicación en redes sociales oficiales de la Peña."],
+              ["consent_foto_web",     "Publicación en web y materiales promocionales."],
+              ["consent_foto_levante", "Cesión de imágenes al Levante UD / Federación de Peñas."],
+            ].map(([k,l])=>(
+              <label key={k} style={{display:"flex",gap:10,cursor:"pointer",padding:"6px 0",borderBottom:`1px solid ${C.border}`,alignItems:"flex-start"}}>
+                <input type="checkbox" checked={consents[k]} onChange={e=>setC(k,e.target.checked)}
+                  style={{marginTop:2,width:16,height:16,accentColor:C.azul,flexShrink:0}}/>
+                <span style={{fontSize:13,color:C.text,lineHeight:1.4}}>{l}</span>
+              </label>
+            ))}
+          </div>
+
+          {/* Comunicaciones */}
+          <div style={{background:C.granateLight,border:`1px solid ${C.granate}30`,borderRadius:10,padding:"12px 14px"}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.granate,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>📢 Comunicaciones (opcional)</div>
+            {[
+              ["consent_promo_pena",       "Comunicaciones promocionales propias de la Peña."],
+              ["consent_patrocinadores",   "Información de patrocinadores enviada por la Peña (sin ceder mis datos)."],
+              ["consent_whatsapp",          "Incorporarme al grupo de WhatsApp de La Rana Mecánica."],
+            ].map(([k,l])=>(
+              <label key={k} style={{display:"flex",gap:10,cursor:"pointer",padding:"6px 0",borderBottom:`1px solid ${C.border}`,alignItems:"flex-start"}}>
+                <input type="checkbox" checked={consents[k]} onChange={e=>setC(k,e.target.checked)}
+                  style={{marginTop:2,width:16,height:16,accentColor:C.granate,flexShrink:0}}/>
+                <span style={{fontSize:13,color:C.text,lineHeight:1.4}}>{l}</span>
+              </label>
             ))}
           </div>
         </div>
