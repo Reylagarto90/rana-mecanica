@@ -71,6 +71,7 @@ function TD({children,style={}}){ return <td style={{padding:"11px 14px",fontSiz
 const TABS = [
   {id:"dashboard",    label:"Panel",         icon:"🏠"},
   {id:"peñistas",     label:"Peñistas",      icon:"👥"},
+  {id:"consentimientos",label:"Consentim.",  icon:"📋"},
   {id:"solicitudes",  label:"Solicitudes",   icon:"📥"},
   {id:"verificaciones",label:"Verificaciones",icon:"✏️"},
   {id:"cuotas",       label:"Cuotas",        icon:"💶"},
@@ -147,6 +148,123 @@ function Dashboard({socios,cuotas,actividades,solicitudes,verificaciones,setTab}
         ))}
       </Card>
     </div>
+  </div>);
+}
+
+// ══════════════════════════════════════════════════════════
+// CONSENTIMIENTOS — vista de tabla, todo de un vistazo
+// ══════════════════════════════════════════════════════════
+const COLUMNAS_CONSENT = [
+  {k:"rgpd",                   l:"RGPD",      icon:"📋", obligatorio:true},
+  {k:"consent_foto_interna",   l:"Foto interna", icon:"📸"},
+  {k:"consent_foto_rrss",      l:"Foto RRSS",    icon:"📱"},
+  {k:"consent_foto_web",       l:"Foto web",     icon:"🌐"},
+  {k:"consent_foto_levante",   l:"Foto Levante", icon:"⚽"},
+  {k:"consent_promo_pena",     l:"Promo peña",   icon:"📢"},
+  {k:"consent_patrocinadores", l:"Patrocin.",    icon:"🤝"},
+  {k:"consent_whatsapp",       l:"WhatsApp",     icon:"💬"},
+];
+
+function Consentimientos({socios,setSocios}){
+  const [busqueda,setBusqueda]=useState("");
+  const [filtroCol,setFiltroCol]=useState("todos"); // muestra solo socios a los que les falta esa columna
+  const [notif,setNotif]=useState(null);
+  const [guardandoId,setGuardandoId]=useState(null);
+
+  const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),2000);};
+
+  const activos = socios.filter(s=>s.estado==="activo");
+  const filtrados = activos.filter(s=>{
+    const m=`${s.nombre} ${s.apellidos} ${s.numero}`.toLowerCase().includes(busqueda.toLowerCase());
+    if(!m) return false;
+    if(filtroCol==="todos") return true;
+    return !s[filtroCol]; // solo los que NO tienen ese consentimiento marcado
+  });
+
+  const toggle = async (socio, campo) => {
+    const nuevoValor = !socio[campo];
+    setGuardandoId(`${socio.id}-${campo}`);
+    setSocios(prev=>prev.map(s=>s.id===socio.id?{...s,[campo]:nuevoValor}:s)); // optimista
+    const { error } = await supabase.from("socios").update({ [campo]: nuevoValor }).eq("id", socio.id);
+    setGuardandoId(null);
+    if(error){
+      setSocios(prev=>prev.map(s=>s.id===socio.id?{...s,[campo]:!nuevoValor}:s)); // revertir
+      ok("❌ Error al guardar, inténtalo de nuevo");
+    }
+  };
+
+  const exportarExcel = () => {
+    const data = activos.map(s=>{
+      const row = { "Nº Socio":s.numero, "Nombre":`${s.nombre} ${s.apellidos}` };
+      COLUMNAS_CONSENT.forEach(c=>{ row[c.l]=s[c.k]?"Sí":"No"; });
+      return row;
+    });
+    const ws=XLSX.utils.json_to_sheet(data);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Consentimientos");
+    XLSX.writeFile(wb,`consentimientos_rana_mecanica_${hoy}.xlsx`);
+  };
+
+  return(<div>
+    {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.rojo,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14,boxShadow:"0 8px 24px rgba(0,0,0,0.2)"}}>{notif}</div>}
+
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:12}}>
+      <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark}}>📋 Consentimientos RGPD · {activos.length} activos</h2>
+      <Btn small outline onClick={exportarExcel}>📥 Excel</Btn>
+    </div>
+
+    <p style={{fontSize:13,color:C.muted,marginBottom:14}}>Clic directo en cualquier casilla ✅/❌ para marcar o desmarcar — se guarda al instante, sin necesidad de entrar socio por socio.</p>
+
+    <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+      <input value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="🔍 Buscar por nombre o número..."
+        style={{flex:1,minWidth:200,padding:"9px 13px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit"}}/>
+      <select value={filtroCol} onChange={e=>setFiltroCol(e.target.value)}
+        style={{padding:"9px 13px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,outline:"none",fontFamily:"inherit",background:C.blanco}}>
+        <option value="todos">Mostrar todos</option>
+        {COLUMNAS_CONSENT.map(c=><option key={c.k} value={c.k}>Solo sin "{c.l}"</option>)}
+      </select>
+    </div>
+
+    <Card style={{padding:0}}>
+      <div style={{overflowX:"auto"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead>
+            <tr>
+              <TH>Nº</TH>
+              <TH>Nombre</TH>
+              {COLUMNAS_CONSENT.map(c=><TH key={c.k}><span title={c.l}>{c.icon} {c.l}</span></TH>)}
+            </tr>
+          </thead>
+          <tbody>
+            {filtrados.map((s,i)=>(
+              <tr key={s.id} style={{background:i%2===0?C.blanco:"#fafafa"}}>
+                <TD style={{fontFamily:"monospace",color:C.muted,fontSize:11}}>{s.numero}</TD>
+                <TD style={{fontWeight:600,whiteSpace:"nowrap"}}>{s.nombre} {s.apellidos}</TD>
+                {COLUMNAS_CONSENT.map(c=>{
+                  const activo=!!s[c.k];
+                  const cargando=guardandoId===`${s.id}-${c.k}`;
+                  return(
+                    <TD key={c.k} style={{textAlign:"center"}}>
+                      <button onClick={()=>toggle(s,c.k)} disabled={cargando}
+                        title={`${c.l}: ${activo?"Sí":"No"} — clic para cambiar`}
+                        style={{
+                          width:30,height:30,borderRadius:8,cursor:cargando?"wait":"pointer",
+                          border:`2px solid ${activo?C.verde:c.obligatorio?C.rojo:C.border}`,
+                          background:activo?C.verdeLight:c.obligatorio?C.rojoLight:C.grisLight,
+                          fontSize:15,opacity:cargando?0.5:1,
+                        }}>
+                        {activo?"✅":"❌"}
+                      </button>
+                    </TD>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div style={{padding:"10px 16px",color:C.muted,fontSize:13,borderTop:`1px solid ${C.border}`}}>{filtrados.length} peñistas</div>
+    </Card>
   </div>);
 }
 
@@ -951,6 +1069,7 @@ export default function Junta(){
     switch(tab){
       case "dashboard":     return <Dashboard socios={socios} cuotas={cuotas} actividades={actividades} solicitudes={solicitudes} verificaciones={verificaciones} setTab={setTab}/>;
       case "peñistas":      return <Peñistas socios={socios} setSocios={setSocios} cuotas={cuotas} setCuotas={setCuotas}/>;
+      case "consentimientos": return <Consentimientos socios={socios} setSocios={setSocios}/>;
       case "solicitudes":   return <Solicitudes solicitudes={solicitudes} setSolicitudes={setSolicitudes} socios={socios} setSocios={setSocios} setCuotas={setCuotas}/>;
       case "verificaciones":return <Verificaciones verificaciones={verificaciones} setVerificaciones={setVerificaciones} socios={socios} setSocios={setSocios}/>;
       case "cuotas":        return <Cuotas socios={socios} cuotas={cuotas} setCuotas={setCuotas}/>;
