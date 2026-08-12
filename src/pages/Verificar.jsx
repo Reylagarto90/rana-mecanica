@@ -532,6 +532,69 @@ function SolicitarCorreccion({socio, onVolver, onEnviado}){
       es_abonado: form.es_abonado,
       num_abonado: form.es_abonado ? form.num_abonado : null,
     }).eq("id", socio.id);
+
+    // Generar PDF con datos propuestos (mezcla de datos actuales + cambios solicitados)
+    const socioConCambios = {
+      ...socio,
+      nombre:    form.nombre    || socio.nombre,
+      apellidos: form.apellidos || socio.apellidos,
+      dni:       form.dni       || socio.dni,
+      fecha_nac: form.fecha_nac || socio.fecha_nac,
+      email:     form.email     || socio.email,
+      telefono:  form.telefono  || socio.telefono,
+      tiene_acciones: form.tiene_acciones,
+      num_acciones:   form.num_acciones,
+      es_abonado:     form.es_abonado,
+      num_abonado:    form.num_abonado,
+      _es_correccion: true, // flag para el PDF
+    };
+    const htmlDoc = generarPDFHTML(socioConCambios);
+
+    // Enviar email al peñista con el PDF de corrección
+    if(socio.email || form.email){
+      const emailDest = form.email || socio.email;
+      await enviarEmail(
+        emailDest,
+        `La Rana Mecánica · Solicitud de corrección de datos — ${socio.nombre} ${socio.apellidos}`,
+        `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+          <div style="background:#8B0A3A;padding:20px;border-radius:8px;margin-bottom:20px;text-align:center;">
+            <h2 style="color:white;margin:0;">🐸 La Rana Mecánica</h2>
+            <p style="color:rgba(255,255,255,0.8);margin:6px 0 0;">Solicitud de corrección de datos recibida</p>
+          </div>
+          <p>Hola <strong>${socio.nombre}</strong>,</p>
+          <p>Hemos recibido tu solicitud de corrección de datos. La junta directiva la revisará y aplicará los cambios en breve.</p>
+          <div style="background:#fef9c3;border:1px solid #fde047;border-radius:8px;padding:14px;margin:16px 0;">
+            <strong>⚠️ Importante:</strong> Los cambios solicitados están pendientes de aprobación. 
+            Tus datos actuales en la peña no cambiarán hasta que la junta los apruebe.
+          </div>
+          <p>Adjunto encontrarás tu ficha con los datos propuestos. Una vez aprobados por la junta, 
+          recibirás confirmación y podrás imprimir la ficha definitiva.</p>
+          <p style="color:#64748b;font-size:13px;">Para cualquier consulta: <a href="mailto:penyaranamecanica@gmail.com">penyaranamecanica@gmail.com</a></p>
+          <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
+          ${htmlDoc}
+        </div>`
+      );
+    }
+
+    // Enviar copia a la junta
+    await enviarEmail(
+      "penyaranamecanica@gmail.com",
+      `[CORRECCIÓN] ${socio.nombre} ${socio.apellidos} (${socio.numero}) ha solicitado cambios en sus datos`,
+      `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;">
+        <div style="background:#003DA5;padding:16px;border-radius:8px;margin-bottom:16px;">
+          <h3 style="color:white;margin:0;">📥 Nueva solicitud de corrección</h3>
+        </div>
+        <p><strong>${socio.nombre} ${socio.apellidos}</strong> (${socio.numero}) ha solicitado cambios en sus datos.</p>
+        <p>Accede al panel de la junta para revisar y aprobar los cambios:</p>
+        <a href="https://reylagarto90.github.io/rana-mecanica/#/junta/login" 
+           style="display:inline-block;background:#C0185A;color:white;padding:10px 20px;border-radius:8px;text-decoration:none;font-weight:700;">
+          Ir al panel de la junta →
+        </a>
+        <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0;"/>
+        ${htmlDoc}
+      </div>`
+    );
+
     setEnviando(false);
     onEnviado();
   };
@@ -616,13 +679,34 @@ function SolicitarCorreccion({socio, onVolver, onEnviado}){
 }
 
 // ── CORRECCIÓN ENVIADA ────────────────────────────────
-function Enviado({socio, onLogout}){
+function Enviado({socio, onLogout, descargarPDF}){
   return(
     <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.granateDark} 0%,#5a0020 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"system-ui,sans-serif"}}>
-      <div style={{background:C.blanco,borderRadius:20,padding:"36px 28px",maxWidth:400,width:"100%",textAlign:"center"}}>
+      <div style={{background:C.blanco,borderRadius:20,padding:"36px 28px",maxWidth:440,width:"100%",textAlign:"center"}}>
         <div style={{fontSize:52,marginBottom:12}}>📨</div>
         <h2 style={{color:C.azul,fontSize:22,fontWeight:700,marginBottom:10}}>¡Solicitud enviada!</h2>
-        <p style={{color:C.gris,fontSize:14,marginBottom:20,lineHeight:1.6}}><strong>{socio.nombre}</strong>, la junta directiva revisará tus correcciones y las aplicará en breve.</p>
+        <p style={{color:C.gris,fontSize:14,marginBottom:16,lineHeight:1.6}}>
+          <strong>{socio.nombre}</strong>, hemos recibido tu solicitud de corrección.
+        </p>
+        <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+          {socio.email&&(
+            <div style={{background:C.azulLight,borderRadius:10,padding:"11px 14px",fontSize:13,color:C.azul,textAlign:"left"}}>
+              📧 Te hemos enviado un email a <strong>{socio.email}</strong> con tu ficha y los cambios solicitados.
+            </div>
+          )}
+          <div style={{background:C.oroLight,borderRadius:10,padding:"11px 14px",fontSize:13,color:"#7a5c00",textAlign:"left"}}>
+            ⏳ Los cambios están <strong>pendientes de aprobación</strong> por la junta directiva. Te avisarán cuando estén aplicados.
+          </div>
+          <div style={{background:C.granateLight,borderRadius:10,padding:"11px 14px",fontSize:13,color:C.granateDark,textAlign:"left"}}>
+            📋 La junta ha recibido copia de tu solicitud y la revisará en breve.
+          </div>
+        </div>
+        <button onClick={()=>descargarPDF({...socio})} style={{width:"100%",padding:12,background:C.azul,color:C.blanco,border:"none",borderRadius:10,cursor:"pointer",fontWeight:700,fontSize:14,fontFamily:"inherit",marginBottom:10}}>
+          📄 Descargar mi ficha (datos propuestos)
+        </button>
+        <p style={{fontSize:11,color:C.muted,marginBottom:14,lineHeight:1.5}}>
+          Esta ficha refleja los cambios solicitados. Una vez aprobados por la junta, imprime la ficha definitiva.
+        </p>
         <button onClick={onLogout} style={{width:"100%",padding:11,background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:10,cursor:"pointer",fontWeight:600,color:C.gris,fontFamily:"inherit"}}>Cerrar sesión</button>
       </div>
     </div>
@@ -645,5 +729,5 @@ export default function PortalVerificacion(){
   if(pantalla==="selector")  return <SelectorPerfil perfiles={perfiles} onSeleccionar={handleSeleccionar} onVolver={()=>setPantalla("login")}/>;
   if(pantalla==="datos")     return <MisDatos socio={socio} onLogout={logout} onCorregir={()=>setPantalla("correccion")} onCambiarPerfil={perfiles.length>1?()=>setPantalla("selector"):null}/>;
   if(pantalla==="correccion")return <SolicitarCorreccion socio={socio} onVolver={()=>setPantalla("datos")} onEnviado={()=>setPantalla("enviado")}/>;
-  if(pantalla==="enviado")   return <Enviado socio={socio} onLogout={logout}/>;
+  if(pantalla==="enviado")   return <Enviado socio={socio} onLogout={logout} descargarPDF={(s)=>{const h=generarPDFHTML(s);const v=window.open("","_blank");if(v){v.document.write(h);v.document.close();setTimeout(()=>v.print(),500);}}}/>;
 }
