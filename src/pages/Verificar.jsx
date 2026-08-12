@@ -532,7 +532,7 @@ function Confirmacion({socio,hayCambios,htmlDoc,onLogout}){
           📄 Descargar mi ficha en PDF
         </button>
         <p style={{fontSize:11,color:C.muted,marginBottom:14,lineHeight:1.5}}>Imprímela, fírmala y entrégala al Secretario.</p>
-        <div style={{background:C.granateLight,borderRadius:10,padding:"10px",marginBottom:14,fontSize:13,color:C.granateDark,fontWeight:600}}>🐸 ¡Visca el Levante i la Rana Mecànica!</div>
+        <div style={{background:C.granateLight,borderRadius:10,padding:"10px",marginBottom:14,fontSize:13,color:C.granateDark,fontWeight:600}}>🐸 ¡Matxo Llevant i la Rana Mecànica!</div>
         <button onClick={onLogout} style={{width:"100%",padding:11,background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:10,cursor:"pointer",fontWeight:600,color:C.gris,fontFamily:"inherit"}}>Cerrar sesión</button>
       </div>
     </div>
