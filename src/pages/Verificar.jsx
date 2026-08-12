@@ -1,6 +1,94 @@
 import { useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
+// URL Edge Function Resend
+const FUNCTIONS_URL = import.meta.env.VITE_SUPABASE_FUNCTIONS_URL || "https://qgmovsqawnadgvywlbyw.supabase.co/functions/v1";
+const SECRETARIO_EMAIL = "penyaranamecanica@gmail.com";
+
+// Generar PDF de verificación usando solo HTML/CSS (sin librería externa)
+const generarPDFHTML = (socio) => {
+  const fmtF=(f)=>{ if(!f) return "—"; const d=f.split("T")[0].split("-"); return `${d[2]}/${d[1]}/${d[0]}`; };
+  const si_no=(v)=>v?"✅ Sí":"❌ No";
+  const ahora = new Date().toLocaleString("es-ES");
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; color: #1e293b;">
+      <div style="text-align:center; background:#8B0A3A; padding:20px; border-radius:8px; margin-bottom:20px;">
+        <h1 style="color:white; margin:0; font-size:20px;">🐸 Peña Levantinista La Rana Mecánica</h1>
+        <p style="color:rgba(255,255,255,0.8); margin:6px 0 0;">Godella-Rocafort · Temporada 2026/2027</p>
+      </div>
+
+      <h2 style="color:#8B0A3A; border-bottom:2px solid #8B0A3A; padding-bottom:8px;">Verificación de datos del socio</h2>
+      
+      <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+        <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600; width:40%;">Nº Socio</td><td style="padding:8px 12px;">${socio.numero}</td></tr>
+        <tr><td style="padding:8px 12px; font-weight:600;">Nombre completo</td><td style="padding:8px 12px;">${socio.nombre} ${socio.apellidos}</td></tr>
+        <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600;">DNI / NIE</td><td style="padding:8px 12px;">${socio.dni||"—"}</td></tr>
+        <tr><td style="padding:8px 12px; font-weight:600;">Fecha nacimiento</td><td style="padding:8px 12px;">${fmtF(socio.fecha_nac)}</td></tr>
+        <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600;">Teléfono</td><td style="padding:8px 12px;">${socio.telefono==="512512"?"(pendiente)":socio.telefono||"—"}</td></tr>
+        <tr><td style="padding:8px 12px; font-weight:600;">Email</td><td style="padding:8px 12px;">${socio.email||"—"}</td></tr>
+        <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600;">Municipio</td><td style="padding:8px 12px;">${socio.municipio||"—"}</td></tr>
+        <tr><td style="padding:8px 12px; font-weight:600;">Tipo</td><td style="padding:8px 12px;">${socio.tipo}</td></tr>
+        <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600;">Cargo</td><td style="padding:8px 12px;">${socio.cargo}</td></tr>
+        <tr><td style="padding:8px 12px; font-weight:600;">Acciones Levante</td><td style="padding:8px 12px;">${socio.tiene_acciones?(socio.num_acciones||1)+" acción/es":"No"}</td></tr>
+        <tr style="background:#f8fafc;"><td style="padding:8px 12px; font-weight:600;">Nº Abonado</td><td style="padding:8px 12px;">${socio.es_abonado?(socio.num_abonado||"Sí"):"No abonado/a"}</td></tr>
+      </table>
+
+      <h3 style="color:#8B0A3A; border-bottom:1px solid #e2e8f0; padding-bottom:6px;">Consentimientos otorgados</h3>
+      <table style="width:100%; border-collapse:collapse; margin-bottom:20px;">
+        <tr style="background:#f8fafc;"><td style="padding:7px 12px; font-weight:600;">📋 Tratamiento de datos (obligatorio)</td><td style="padding:7px 12px;">${si_no(socio.rgpd||socio.consent_datos)}</td></tr>
+        <tr><td style="padding:7px 12px;">📸 Foto comunicación interna</td><td style="padding:7px 12px;">${si_no(socio.consent_foto_interna)}</td></tr>
+        <tr style="background:#f8fafc;"><td style="padding:7px 12px;">📱 Foto redes sociales</td><td style="padding:7px 12px;">${si_no(socio.consent_foto_rrss)}</td></tr>
+        <tr><td style="padding:7px 12px;">🌐 Foto web y materiales</td><td style="padding:7px 12px;">${si_no(socio.consent_foto_web)}</td></tr>
+        <tr style="background:#f8fafc;"><td style="padding:7px 12px;">⚽ Foto cesión Levante UD/Federación</td><td style="padding:7px 12px;">${si_no(socio.consent_foto_levante)}</td></tr>
+        <tr><td style="padding:7px 12px;">📢 Comunicaciones promocionales peña</td><td style="padding:7px 12px;">${si_no(socio.consent_promo_pena)}</td></tr>
+        <tr style="background:#f8fafc;"><td style="padding:7px 12px;">🤝 Info patrocinadores</td><td style="padding:7px 12px;">${si_no(socio.consent_patrocinadores)}</td></tr>
+        <tr><td style="padding:7px 12px;">💬 Grupo WhatsApp</td><td style="padding:7px 12px;">${si_no(socio.consent_whatsapp)}</td></tr>
+      </table>
+
+      <div style="background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:14px; margin-bottom:20px;">
+        <p style="margin:0; font-size:13px; color:#166534;">
+          ✅ Datos verificados digitalmente el <strong>${ahora}</strong><br/>
+          El socio ha confirmado que sus datos son correctos a través del portal de verificación de la Peña Levantinista La Rana Mecánica.
+        </p>
+      </div>
+
+      <div style="background:#fef9c3; border:1px solid #fde047; border-radius:8px; padding:14px; margin-bottom:20px; font-size:12px; color:#713f12;">
+        <strong>Nota importante:</strong> Este documento debe ser impreso, firmado por el socio y entregado al Secretario de la Peña. 
+        La negativa a autorizar la publicación de imágenes no impide ser socio ni participar en las actividades.
+        Los datos serán tratados conforme al RGPD (UE) 2016/679 y la LOPDGDD.
+        Para ejercer sus derechos: <strong>penyaranamecanica@gmail.com</strong>
+      </div>
+
+      <div style="border-top:2px solid #e2e8f0; padding-top:20px; margin-top:20px;">
+        <p style="font-size:13px; color:#64748b; margin-bottom:30px;">
+          Firma del socio / tutor legal (en caso de menor):
+        </p>
+        <div style="border-bottom:1px solid #94a3b8; margin-bottom:8px; height:40px;"></div>
+        <p style="font-size:12px; color:#94a3b8; margin:0;">Nombre: ${socio.nombre} ${socio.apellidos} &nbsp;&nbsp;&nbsp; Fecha: ___/___/______</p>
+      </div>
+
+      <p style="font-size:11px; color:#94a3b8; text-align:center; margin-top:20px; border-top:1px solid #e2e8f0; padding-top:12px;">
+        Peña Levantinista La Rana Mecánica · Godella-Rocafort · penyaranamecanica@gmail.com
+      </p>
+    </div>
+  `;
+};
+
+// Enviar email via Edge Function Resend
+const enviarEmail = async (destinatario, asunto, html) => {
+  try {
+    const res = await fetch(`${FUNCTIONS_URL}/send-email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to: destinatario, subject: asunto, html }),
+    });
+    return res.ok;
+  } catch(e) {
+    console.error("Error enviando email:", e);
+    return false;
+  }
+};
+
 const LOGO = "/rana-mecanica/logo.jpg";
 
 const C = {
@@ -152,9 +240,43 @@ function Login({onLogin, onMultiple}){
 function MisDatos({socio, onLogout, onCorregir, onCambiarPerfil}){
   const [confirmado,setConfirmado]=useState(false);
 
+  const [enviandoEmail, setEnviandoEmail] = useState(false);
+
   const confirmar=async()=>{
+    setEnviandoEmail(true);
     // Marcar como verificado en Supabase
-    await supabase.from("socios").update({verificado:true}).eq("id",socio.id);
+    await supabase.from("socios").update({
+      verificado:true,
+      fecha_consentimiento: new Date().toISOString(),
+    }).eq("id",socio.id);
+
+    // Generar HTML del documento
+    const htmlDoc = generarPDFHTML(socio);
+
+    // Enviar email al peñista (si tiene email)
+    if(socio.email && socio.email !== "512512") {
+      await enviarEmail(
+        socio.email,
+        `✅ Verificación de datos - La Rana Mecánica - Temporada 2026/2027`,
+        `<h2>Hola ${socio.nombre},</h2>
+        <p>Has verificado correctamente tus datos en la Peña Levantinista La Rana Mecánica para la temporada 2026/2027.</p>
+        <p>Adjunto encontrarás tu ficha de socio con los consentimientos otorgados. <strong>Por favor, imprímela, fírmala y entrégala al Secretario de la Peña.</strong></p>
+        <hr/>
+        ${htmlDoc}`
+      );
+    }
+
+    // Enviar copia al secretario
+    await enviarEmail(
+      SECRETARIO_EMAIL,
+      `📋 Verificación completada: ${socio.nombre} ${socio.apellidos} (${socio.numero})`,
+      `<h2>Verificación completada</h2>
+      <p><strong>${socio.nombre} ${socio.apellidos}</strong> (${socio.numero}) ha verificado sus datos correctamente el ${new Date().toLocaleString("es-ES")}.</p>
+      <hr/>
+      ${htmlDoc}`
+    );
+
+    setEnviandoEmail(false);
     setConfirmado(true);
   };
 
@@ -168,7 +290,13 @@ function MisDatos({socio, onLogout, onCorregir, onCambiarPerfil}){
       <div style={{background:C.blanco,borderRadius:20,padding:"36px 28px",maxWidth:400,width:"100%",textAlign:"center"}}>
         <div style={{fontSize:52,marginBottom:12}}>✅</div>
         <h2 style={{color:C.verde,fontSize:22,fontWeight:700,marginBottom:10}}>¡Datos confirmados!</h2>
-        <p style={{color:C.gris,fontSize:14,marginBottom:20,lineHeight:1.6}}>Gracias <strong>{socio.nombre}</strong>. La junta ha recibido tu confirmación para la temporada 2026/2027.</p>
+        <p style={{color:C.gris,fontSize:14,marginBottom:16,lineHeight:1.6}}>Gracias <strong>{socio.nombre}</strong>. La junta ha recibido tu confirmación para la temporada 2026/2027.</p>
+        {socio.email&&<div style={{background:C.azulLight,borderRadius:10,padding:"12px",marginBottom:12,fontSize:13,color:C.azul}}>
+          📧 Te hemos enviado un email a <strong>{socio.email}</strong> con tu ficha de socio. Imprímela, fírmala y entrégala al Secretario.
+        </div>}
+        <div style={{background:C.oroLight,borderRadius:10,padding:"12px",marginBottom:16,fontSize:13,color:"#7a5c00"}}>
+          📋 También hemos enviado una copia a la junta directiva.
+        </div>
         <div style={{background:C.granateLight,borderRadius:10,padding:"12px",marginBottom:20,fontSize:14,color:C.granateDark,fontWeight:600}}>🐸 ¡Visca el Levante i la Rana Mecànica!</div>
         <button onClick={onLogout} style={{width:"100%",padding:11,background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:10,cursor:"pointer",fontWeight:600,color:C.gris,fontFamily:"inherit"}}>Cerrar sesión</button>
       </div>
@@ -251,8 +379,8 @@ function MisDatos({socio, onLogout, onCorregir, onCambiarPerfil}){
         </div>
 
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <button onClick={confirmar} style={{padding:15,background:C.verde,color:C.blanco,border:"none",borderRadius:12,fontWeight:700,fontSize:15,cursor:"pointer",fontFamily:"inherit"}}>
-            ✅ {socio.tipo==="infantil"?"Los datos del menor son correctos":"Mis datos son correctos — Confirmar"}
+          <button onClick={confirmar} disabled={enviandoEmail} style={{padding:15,background:enviandoEmail?"#aaa":C.verde,color:C.blanco,border:"none",borderRadius:12,fontWeight:700,fontSize:15,cursor:enviandoEmail?"not-allowed":"pointer",fontFamily:"inherit"}}>
+            {enviandoEmail?"📨 Enviando documentación...":"✅ "+(socio.tipo==="infantil"?"Los datos del menor son correctos":"Mis datos son correctos — Confirmar")}
           </button>
           <button onClick={onCorregir} style={{padding:13,background:C.blanco,color:C.granate,border:`2px solid ${C.granate}`,borderRadius:12,fontWeight:700,fontSize:14,cursor:"pointer",fontFamily:"inherit"}}>
             ✏️ Hay algún dato incorrecto — Solicitar corrección
