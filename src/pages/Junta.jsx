@@ -187,6 +187,14 @@ function Peñistas({socios,setSocios,cuotas,setCuotas}){
       num_acciones:form.num_acciones||0,
       es_abonado:form.es_abonado||false,
       num_abonado:form.num_abonado||null,
+      verificado:form.verificado||false,
+      consent_foto_interna:form.consent_foto_interna||false,
+      consent_foto_rrss:form.consent_foto_rrss||false,
+      consent_foto_web:form.consent_foto_web||false,
+      consent_foto_levante:form.consent_foto_levante||false,
+      consent_promo_pena:form.consent_promo_pena||false,
+      consent_patrocinadores:form.consent_patrocinadores||false,
+      consent_whatsapp:form.consent_whatsapp||false,
     }).eq("id",editando.id);
     if(error){ok("❌ Error al guardar");return;}
     setSocios(p=>p.map(s=>s.id===editando.id?{...s,...form}:s));
@@ -275,12 +283,28 @@ function Peñistas({socios,setSocios,cuotas,setCuotas}){
           <Input label="Nº acciones" value={form.num_acciones} onChange={v=>setF("num_acciones",v)} type="number"/>
           <Input label="Nº abonado" value={form.num_abonado} onChange={v=>setF("num_abonado",v)}/>
         </div>
-        <div style={{display:"flex",gap:16,marginBottom:16,flexWrap:"wrap"}}>
-          {[["tiene_acciones","Tiene acciones"],["es_abonado","Es abonado/a"],["rgpd","RGPD firmado"],["foto_aut","Foto autorizada"],["verificado","Verificado"]].map(([k,l])=>(
-            <label key={k} style={{display:"flex",alignItems:"center",gap:6,fontSize:13,cursor:"pointer"}}>
-              <input type="checkbox" checked={!!form[k]} onChange={e=>setF(k,e.target.checked)}/>{l}
-            </label>
-          ))}
+        <div style={{marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Estado y consentimientos</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
+            {[
+              ["tiene_acciones","📈 Tiene acciones"],
+              ["es_abonado","🎫 Es abonado/a"],
+              ["rgpd","📋 RGPD firmado"],
+              ["foto_aut","📸 Foto autorizada"],
+              ["verificado","✅ Verificado"],
+              ["consent_foto_interna","📸 Foto interna"],
+              ["consent_foto_rrss","📱 Foto RRSS"],
+              ["consent_foto_web","🌐 Foto web"],
+              ["consent_foto_levante","⚽ Foto Levante/Fed."],
+              ["consent_promo_pena","📢 Promo peña"],
+              ["consent_patrocinadores","🤝 Patrocinadores"],
+              ["consent_whatsapp","💬 WhatsApp"],
+            ].map(([k,l])=>(
+              <label key={k} style={{display:"flex",alignItems:"center",gap:6,fontSize:12,cursor:"pointer",padding:"5px 8px",borderRadius:6,background:form[k]?C.verdeLight:C.grisLight}}>
+                <input type="checkbox" checked={!!form[k]} onChange={e=>setF(k,e.target.checked)} style={{accentColor:C.verde}}/>{l}
+              </label>
+            ))}
+          </div>
         </div>
         <div style={{display:"flex",gap:10}}>
           <Btn outline onClick={()=>setEditando(null)} style={{flex:1}}>Cancelar</Btn>
@@ -403,6 +427,37 @@ function Solicitudes({solicitudes,setSolicitudes,socios,setSocios,setCuotas}){
             </div>
           ))}
         </div>
+        
+        {/* CONSENTIMIENTOS */}
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Consentimientos otorgados</div>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 12px",background:seleccionada.rgpd?C.verdeLight:C.rojoLight,borderRadius:8}}>
+              <span style={{fontSize:13}}>📋 Tratamiento de datos (obligatorio)</span>
+              <span style={{fontWeight:700,color:seleccionada.rgpd?C.verde:C.rojo,fontSize:12}}>{seleccionada.rgpd?"✅ Sí":"❌ NO"}</span>
+            </div>
+            {[
+              ["consent_foto_interna","📸 Foto comunicación interna"],
+              ["consent_foto_rrss","📱 Foto redes sociales"],
+              ["consent_foto_web","🌐 Foto web y materiales"],
+              ["consent_foto_levante","⚽ Foto cesión Levante UD/Federación"],
+              ["consent_promo_pena","📢 Comunicaciones promocionales peña"],
+              ["consent_patrocinadores","🤝 Info patrocinadores"],
+              ["consent_whatsapp","💬 Grupo WhatsApp"],
+            ].map(([k,l])=>(
+              <div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"6px 12px",background:C.grisLight,borderRadius:8}}>
+                <span style={{fontSize:12,color:C.text}}>{l}</span>
+                <span style={{fontWeight:700,color:seleccionada[k]?C.verde:C.muted,fontSize:11}}>{seleccionada[k]?"✅ Sí":"No"}</span>
+              </div>
+            ))}
+            {seleccionada.fecha_consentimiento&&(
+              <div style={{fontSize:11,color:C.muted,textAlign:"right",marginTop:2}}>
+                🕐 {new Date(seleccionada.fecha_consentimiento).toLocaleString("es-ES")}
+              </div>
+            )}
+          </div>
+        </div>
+
         {seleccionada.comentarios&&<div style={{background:C.oroLight,borderRadius:10,padding:"10px 14px",marginBottom:14,fontSize:13,color:"#7a5c00"}}>💬 {seleccionada.comentarios}</div>}
         <div style={{marginBottom:14}}>
           <label style={{fontSize:12,fontWeight:600,color:C.gris,display:"block",marginBottom:6}}>Motivo de rechazo (si aplica)</label>
