@@ -255,16 +255,16 @@ function Login({onLogin, onMultiple}){
 function MisDatos({socio, onLogout, onCorregir, onCambiarPerfil}){
   const [confirmado,setConfirmado]=useState(false);
   const [enviandoEmail, setEnviandoEmail] = useState(false);
-  const [consents,setConsents]=useState({
-    rgpd:             socio.rgpd||false,
-    consent_foto_interna:  socio.consent_foto_interna||false,
-    consent_foto_rrss:     socio.consent_foto_rrss||false,
-    consent_foto_web:      socio.consent_foto_web||false,
-    consent_foto_levante:  socio.consent_foto_levante||false,
-    consent_promo_pena:    socio.consent_promo_pena||false,
-    consent_patrocinadores:socio.consent_patrocinadores||false,
-    consent_whatsapp:      socio.consent_whatsapp||false,
-  });
+  const [consents,setConsents]=useState(()=>({
+    rgpd:              socio.rgpd===true,
+    consent_foto_interna:  socio.consent_foto_interna===true,
+    consent_foto_rrss:     socio.consent_foto_rrss===true,
+    consent_foto_web:      socio.consent_foto_web===true,
+    consent_foto_levante:  socio.consent_foto_levante===true,
+    consent_promo_pena:    socio.consent_promo_pena===true,
+    consent_patrocinadores:socio.consent_patrocinadores===true,
+    consent_whatsapp:      socio.consent_whatsapp===true,
+  }));
   const setC=(k,v)=>setConsents(c=>({...c,[k]:v}));
 
   const descargarPDF=(s)=>{
