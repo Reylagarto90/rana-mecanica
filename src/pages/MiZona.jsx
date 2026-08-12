@@ -464,7 +464,14 @@ function TabActividades({actividades,setActividades,socio}){
 
   const apuntarse=async(id)=>{
     setProcesando(id);
-    const {error}=await supabase.from("inscripciones").insert({actividad_id:id, socio_id:socio.id});
+    // Si ya existe una fila cancelada previa, la reactivamos; si no, insertamos una nueva
+    const {data:actualizada}=await supabase.from("inscripciones")
+      .update({estado:"pendiente"}).eq("actividad_id",id).eq("socio_id",socio.id).select();
+    let error=null;
+    if(!actualizada||actualizada.length===0){
+      const res=await supabase.from("inscripciones").insert({actividad_id:id, socio_id:socio.id, estado:"pendiente"});
+      error=res.error;
+    }
     setProcesando(null);
     if(error){ ok("❌ Error al apuntarte, inténtalo de nuevo"); return; }
     setActividades(p=>p.map(a=>a.id===id?{...a,inscrito:true,inscritos:a.inscritos+1}:a));
@@ -474,7 +481,7 @@ function TabActividades({actividades,setActividades,socio}){
 
   const desapuntarse=async(id)=>{
     setProcesando(id);
-    const {error}=await supabase.from("inscripciones").delete().eq("actividad_id",id).eq("socio_id",socio.id);
+    const {error}=await supabase.from("inscripciones").update({estado:"cancelada"}).eq("actividad_id",id).eq("socio_id",socio.id);
     setProcesando(null);
     if(error){ ok("❌ Error al cancelar, inténtalo de nuevo"); return; }
     setActividades(p=>p.map(a=>a.id===id?{...a,inscrito:false,inscritos:Math.max(0,a.inscritos-1)}:a));
@@ -566,8 +573,8 @@ function TabActividades({actividades,setActividades,socio}){
 
 // ── TAB: LOTERÍA ──────────────────────────────────────────
 function TabLoteria({loteria}){
-  const totalPend=loteria.filter(l=>!l.pagado).reduce((a,l)=>a+l.total,0);
-  const totalPag=loteria.filter(l=>l.pagado).reduce((a,l)=>a+l.total,0);
+  const totalPend=loteria.filter(l=>!l.pagado).reduce((a,l)=>a+l.importe_total,0);
+  const totalPag=loteria.filter(l=>l.pagado).reduce((a,l)=>a+l.importe_total,0);
 
   return(
     <div>
@@ -588,11 +595,11 @@ function TabLoteria({loteria}){
           <Card key={l.id} style={{borderLeft:`4px solid ${l.pagado?C.verde:C.oro}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
               <div>
-                <div style={{fontWeight:700,fontSize:15,color:C.text}}>🎟️ {l.sorteo}</div>
-                <div style={{fontSize:12,color:C.muted,marginTop:2}}>{l.unidades} décimo{l.unidades>1?"s":""} × {fmt(l.precio_und)}/ud</div>
+                <div style={{fontWeight:700,fontSize:15,color:C.text}}>🎟️ {l.concepto}</div>
+                <div style={{fontSize:12,color:C.muted,marginTop:2}}>{l.unidades} décimo{l.unidades>1?"s":""} × {fmt(l.precio_und)}/ud{l.decimos_de?` · Décimos de: ${l.decimos_de}`:""}</div>
               </div>
               <div style={{textAlign:"right"}}>
-                <div style={{fontSize:20,fontWeight:800,color:l.pagado?C.verde:C.oro}}>{fmt(l.total)}</div>
+                <div style={{fontSize:20,fontWeight:800,color:l.pagado?C.verde:C.oro}}>{fmt(l.importe_total)}</div>
                 <Pill text={l.pagado?"✅ Pagado":"⏳ Pendiente"} color={l.pagado?C.verde:C.oro} bg={l.pagado?C.verdeLight:C.oroLight}/>
               </div>
             </div>
@@ -779,9 +786,9 @@ export default function PanelPenista(){
       setCargandoDatos(true);
       const [cuotasRes, actRes, inscRes, insTodasRes, loteriaRes] = await Promise.all([
         supabase.from("cuotas").select("*").eq("socio_id",socio.id).order("temporada",{ascending:false}),
-        supabase.from("actividades").select("*").order("fecha",{ascending:true}),
-        supabase.from("inscripciones").select("actividad_id").eq("socio_id",socio.id),
-        supabase.from("inscripciones").select("actividad_id"),
+        supabase.from("actividades").select("*").neq("estado","cancelada").order("fecha",{ascending:true}),
+        supabase.from("inscripciones").select("actividad_id,estado").eq("socio_id",socio.id).neq("estado","cancelada"),
+        supabase.from("inscripciones").select("actividad_id").neq("estado","cancelada"),
         supabase.from("loteria").select("*").eq("socio_id",socio.id).order("id",{ascending:false}),
       ]);
       if(cancelado) return;
