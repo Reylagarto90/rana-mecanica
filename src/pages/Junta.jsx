@@ -71,6 +71,7 @@ function TD({children,style={}}){ return <td style={{padding:"11px 14px",fontSiz
 const TABS = [
   {id:"dashboard",    label:"Panel",         icon:"🏠"},
   {id:"peñistas",     label:"Peñistas",      icon:"👥"},
+  {id:"cuentas",      label:"Cuentas",       icon:"🔐"},
   {id:"consentimientos",label:"Consentim.",  icon:"📋"},
   {id:"solicitudes",  label:"Solicitudes",   icon:"📥"},
   {id:"verificaciones",label:"Verificaciones",icon:"✏️"},
@@ -264,6 +265,81 @@ function Consentimientos({socios,setSocios}){
         </table>
       </div>
       <div style={{padding:"10px 16px",color:C.muted,fontSize:13,borderTop:`1px solid ${C.border}`}}>{filtrados.length} peñistas</div>
+    </Card>
+  </div>);
+}
+
+// ══════════════════════════════════════════════════════════
+// CUENTAS — aprobación de registros usuario/contraseña
+// ══════════════════════════════════════════════════════════
+function CuentasPendientes({socios,setSocios}){
+  const [notif,setNotif]=useState(null);
+  const [procesando,setProcesando]=useState(null);
+  const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
+
+  const pendientes = socios.filter(s=>s.auth_user_id && !s.cuenta_aprobada);
+  const aprobadas = socios.filter(s=>s.auth_user_id && s.cuenta_aprobada);
+
+  const aprobar=async(socio)=>{
+    setProcesando(socio.id);
+    const {error}=await supabase.from("socios").update({cuenta_aprobada:true}).eq("id",socio.id);
+    setProcesando(null);
+    if(error){ ok("❌ Error al aprobar"); return; }
+    setSocios(prev=>prev.map(s=>s.id===socio.id?{...s,cuenta_aprobada:true}:s));
+    ok(`✅ Cuenta de ${socio.nombre} aprobada`);
+  };
+
+  const rechazar=async(socio)=>{
+    if(!confirm(`¿Rechazar la solicitud de cuenta de ${socio.nombre} ${socio.apellidos}? Podrá volver a registrarse.`)) return;
+    setProcesando(socio.id);
+    const {error}=await supabase.from("socios").update({auth_user_id:null,cuenta_aprobada:false,cuenta_solicitada_at:null}).eq("id",socio.id);
+    setProcesando(null);
+    if(error){ ok("❌ Error al rechazar"); return; }
+    setSocios(prev=>prev.map(s=>s.id===socio.id?{...s,auth_user_id:null,cuenta_aprobada:false}:s));
+    ok(`Solicitud de ${socio.nombre} rechazada`);
+  };
+
+  return(<div>
+    {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.rojo,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14,boxShadow:"0 8px 24px rgba(0,0,0,0.2)"}}>{notif}</div>}
+
+    <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark,marginBottom:6}}>🔐 Cuentas de usuario</h2>
+    <p style={{fontSize:13,color:C.muted,marginBottom:20}}>Los socios se registran con email y contraseña en Mi Zona; aquí apruebas el acceso antes de que puedan entrar.</p>
+
+    <h3 style={{fontSize:13,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>Pendientes de aprobar ({pendientes.length})</h3>
+    {pendientes.length===0?(
+      <p style={{color:C.muted,fontSize:13,marginBottom:24}}>No hay solicitudes pendientes.</p>
+    ):(
+      <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:24}}>
+        {pendientes.map(s=>(
+          <Card key={s.id} style={{borderLeft:`4px solid ${C.oro}`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+              <div>
+                <div style={{fontWeight:700,fontSize:14,color:C.text}}>{s.nombre} {s.apellidos} <span style={{fontFamily:"monospace",color:C.muted,fontWeight:400,fontSize:12}}>({s.numero})</span></div>
+                <div style={{fontSize:12,color:C.muted,marginTop:2}}>{s.email} · Solicitado {s.cuenta_solicitada_at?new Date(s.cuenta_solicitada_at).toLocaleDateString("es-ES"):"—"}</div>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <Btn small outline onClick={()=>rechazar(s)} disabled={procesando===s.id}>Rechazar</Btn>
+                <Btn small color={C.verde} onClick={()=>aprobar(s)} disabled={procesando===s.id}>{procesando===s.id?"...":"✅ Aprobar"}</Btn>
+              </div>
+            </div>
+          </Card>
+        ))}
+      </div>
+    )}
+
+    <h3 style={{fontSize:13,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>Cuentas activas ({aprobadas.length})</h3>
+    <Card style={{padding:0}}>
+      {aprobadas.length===0?(
+        <p style={{padding:16,color:C.muted,fontSize:13}}>Todavía no hay cuentas aprobadas.</p>
+      ):aprobadas.map((s,i)=>(
+        <div key={s.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 16px",borderBottom:i<aprobadas.length-1?`1px solid ${C.border}`:"none"}}>
+          <div>
+            <span style={{fontWeight:600,fontSize:13}}>{s.nombre} {s.apellidos}</span>
+            <span style={{fontFamily:"monospace",color:C.muted,fontSize:11,marginLeft:8}}>{s.numero}</span>
+          </div>
+          <span style={{fontSize:12,color:C.muted}}>{s.email}</span>
+        </div>
+      ))}
     </Card>
   </div>);
 }
@@ -1156,6 +1232,7 @@ export default function Junta(){
     switch(tab){
       case "dashboard":     return <Dashboard socios={socios} cuotas={cuotas} actividades={actividades} solicitudes={solicitudes} verificaciones={verificaciones} setTab={setTab}/>;
       case "peñistas":      return <Peñistas socios={socios} setSocios={setSocios} cuotas={cuotas} setCuotas={setCuotas}/>;
+      case "cuentas":       return <CuentasPendientes socios={socios} setSocios={setSocios}/>;
       case "consentimientos": return <Consentimientos socios={socios} setSocios={setSocios}/>;
       case "solicitudes":   return <Solicitudes solicitudes={solicitudes} setSolicitudes={setSolicitudes} socios={socios} setSocios={setSocios} setCuotas={setCuotas}/>;
       case "verificaciones":return <Verificaciones verificaciones={verificaciones} setVerificaciones={setVerificaciones} socios={socios} setSocios={setSocios}/>;

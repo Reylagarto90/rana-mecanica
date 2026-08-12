@@ -244,8 +244,142 @@ function SelectorPerfil({perfiles,onSeleccionar,onVolver}){
   );
 }
 
-// ── LOGIN ─────────────────────────────────────────────────
-function Login({onLogin,onMultiple}){
+// ── ACCESO CON USUARIO Y CONTRASEÑA (con aprobación de junta) ────────
+function AccesoCuenta({onLogin,onPendiente,onVolver}){
+  const [modo,setModo]=useState("entrar"); // entrar | registro
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [numero,setNumero]=useState("");
+  const [dni,setDni]=useState("");
+  const [error,setError]=useState("");
+  const [info,setInfo]=useState("");
+  const [loading,setLoading]=useState(false);
+
+  const entrar=async()=>{
+    if(!email||!password){setError("Rellena email y contraseña");return;}
+    setLoading(true); setError(""); setInfo("");
+    const {data,error:errAuth}=await supabase.auth.signInWithPassword({email,password});
+    if(errAuth||!data?.user){ setLoading(false); setError("Email o contraseña incorrectos."); return; }
+    const {data:socioRow}=await supabase.from("socios").select("*").eq("auth_user_id",data.user.id).maybeSingle();
+    setLoading(false);
+    if(!socioRow){ setError("Tu cuenta no está vinculada a ningún socio. Contacta con la junta."); return; }
+    if(!socioRow.cuenta_aprobada){ onPendiente(); return; }
+    onLogin(socioRow);
+  };
+
+  const registrar=async()=>{
+    if(!numero||!dni||!email||!password){setError("Rellena todos los campos");return;}
+    if(password.length<6){setError("La contraseña debe tener al menos 6 caracteres");return;}
+    setLoading(true); setError(""); setInfo("");
+
+    const {data:socioRow,error:errBuscar}=await supabase.from("socios").select("*")
+      .ilike("numero",numero.trim()).ilike("dni",dni.trim()).is("auth_user_id",null).maybeSingle();
+    if(errBuscar||!socioRow){
+      setLoading(false);
+      setError("No encontramos un socio con ese número y DNI, o esa cuenta ya está registrada. Contacta con la junta si crees que es un error.");
+      return;
+    }
+
+    const {data:authData,error:errAuth}=await supabase.auth.signUp({email,password});
+    if(errAuth||!authData?.user){ setLoading(false); setError(errAuth?.message||"No se pudo crear la cuenta."); return; }
+
+    const {error:errVincular}=await supabase.from("socios").update({
+      auth_user_id: authData.user.id,
+      cuenta_aprobada: false,
+      cuenta_solicitada_at: new Date().toISOString(),
+      email: socioRow.email||email,
+    }).eq("id",socioRow.id);
+
+    setLoading(false);
+    if(errVincular){ setError("Cuenta creada pero no se pudo vincular a tu ficha. Contacta con la junta."); return; }
+    setInfo("✅ Cuenta creada. La junta revisará tu solicitud y la aprobará en breve. Te avisaremos.");
+  };
+
+  return(
+    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.granateDark} 0%,#5a0020 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"system-ui,sans-serif"}}>
+      <div style={{width:"100%",maxWidth:400}}>
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <img src={LOGO} alt="La Rana Mecánica" style={{width:100,height:100,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.3)",objectFit:"cover",display:"block",margin:"0 auto 14px",boxShadow:"0 8px 32px rgba(0,0,0,0.4)"}}/>
+          <h1 style={{color:C.blanco,fontSize:21,fontWeight:700,marginBottom:6}}>{modo==="entrar"?"Accede a tu cuenta":"Crea tu cuenta"}</h1>
+        </div>
+
+        <div style={{background:C.blanco,borderRadius:20,padding:"26px 24px",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+          {info?(
+            <div style={{textAlign:"center",padding:"10px 0"}}>
+              <div style={{fontSize:44,marginBottom:10}}>📨</div>
+              <p style={{color:C.text,fontSize:14,lineHeight:1.6,marginBottom:18}}>{info}</p>
+              <button onClick={()=>{setModo("entrar");setInfo("");setPassword("");}} style={{width:"100%",padding:12,background:C.granate,color:C.blanco,border:"none",borderRadius:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Ir a iniciar sesión</button>
+            </div>
+          ):(<>
+            {modo==="registro"&&(<>
+              <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Nº de socio</label>
+              <input value={numero} onChange={e=>setNumero(e.target.value)} placeholder="LRM-0024" style={{width:"100%",padding:"10px 13px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",marginBottom:12}}/>
+              <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>DNI / NIE</label>
+              <input value={dni} onChange={e=>setDni(e.target.value)} placeholder="12345678A" style={{width:"100%",padding:"10px 13px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",marginBottom:12}}/>
+            </>)}
+            <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Email</label>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu@email.com" style={{width:"100%",padding:"10px 13px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",marginBottom:12}}/>
+            <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Contraseña</label>
+            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&(modo==="entrar"?entrar():registrar())} style={{width:"100%",padding:"10px 13px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",marginBottom:14}}/>
+
+            {error&&<div style={{marginBottom:12,padding:"10px 14px",background:C.rojoLight,borderRadius:10,fontSize:13,color:C.rojo}}>⚠️ {error}</div>}
+
+            <button onClick={modo==="entrar"?entrar:registrar} disabled={loading} style={{width:"100%",padding:13,background:loading?"#bbb":C.granate,color:C.blanco,border:"none",borderRadius:10,fontWeight:700,fontSize:15,cursor:loading?"not-allowed":"pointer",fontFamily:"inherit",marginBottom:10}}>
+              {loading?"Un momento...":modo==="entrar"?"Entrar":"Crear cuenta"}
+            </button>
+
+            <button onClick={()=>{setModo(modo==="entrar"?"registro":"entrar");setError("");}} style={{width:"100%",padding:10,background:"transparent",border:"none",color:C.granate,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>
+              {modo==="entrar"?"¿No tienes cuenta? Regístrate":"¿Ya tienes cuenta? Inicia sesión"}
+            </button>
+          </>)}
+
+          <button onClick={onVolver} style={{width:"100%",marginTop:10,padding:10,background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>← Volver</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PANTALLA: CUENTA PENDIENTE DE APROBACIÓN ─────────────────────────
+function PantallaPendiente({onLogout}){
+  return(
+    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.granateDark} 0%,#5a0020 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"system-ui,sans-serif"}}>
+      <div style={{width:"100%",maxWidth:400,background:C.blanco,borderRadius:20,padding:"32px 24px",textAlign:"center",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+        <div style={{fontSize:52,marginBottom:14}}>⏳</div>
+        <h2 style={{fontSize:19,fontWeight:700,color:C.granateDark,marginBottom:10}}>Cuenta pendiente de aprobación</h2>
+        <p style={{color:C.gris,fontSize:14,lineHeight:1.6,marginBottom:22}}>Tu cuenta ha sido creada correctamente. La junta directiva la revisará y la aprobará en breve. Te avisaremos por email cuando puedas acceder.</p>
+        <button onClick={onLogout} style={{width:"100%",padding:12,background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:10,color:C.gris,cursor:"pointer",fontWeight:600,fontFamily:"inherit"}}>Salir</button>
+      </div>
+    </div>
+  );
+}
+
+// ── PANTALLA INICIAL: ELEGIR MÉTODO DE ACCESO ────────────────────────
+function AccesoInicial({onCuenta,onTelefono}){
+  return(
+    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.granateDark} 0%,#5a0020 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"system-ui,sans-serif"}}>
+      <div style={{width:"100%",maxWidth:400}}>
+        <div style={{textAlign:"center",marginBottom:28}}>
+          <img src={LOGO} alt="La Rana Mecánica" style={{width:120,height:120,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.3)",objectFit:"cover",display:"block",margin:"0 auto 16px",boxShadow:"0 8px 32px rgba(0,0,0,0.4)"}}/>
+          <h1 style={{color:C.blanco,fontSize:22,fontWeight:700,marginBottom:6}}>Mi zona de peñista</h1>
+          <p style={{color:"rgba(255,255,255,0.6)",fontSize:14,lineHeight:1.5}}>Peña Levantinista La Rana Mecánica<br/>Temporada 2026/2027</p>
+        </div>
+        <div style={{background:C.blanco,borderRadius:20,padding:"26px 24px",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+          <button onClick={onCuenta} style={{width:"100%",padding:14,background:C.granate,color:C.blanco,border:"none",borderRadius:10,fontWeight:700,fontSize:15,cursor:"pointer",fontFamily:"inherit",marginBottom:12}}>
+            🔐 Entrar con usuario y contraseña
+          </button>
+          <button onClick={onTelefono} style={{width:"100%",padding:12,background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:10,color:C.gris,fontWeight:600,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+            📱 Acceso temporal por teléfono
+          </button>
+          <p style={{marginTop:14,fontSize:11,color:C.muted,textAlign:"center",lineHeight:1.5}}>El acceso por teléfono se retirará cuando todos los socios tengan cuenta creada.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── LOGIN POR TELÉFONO (temporal, durante la transición) ────────────
+function Login({onLogin,onMultiple,onVolver}){
   const [tel,setTel]=useState("");
   const [error,setError]=useState("");
   const [loading,setLoading]=useState(false);
@@ -301,6 +435,7 @@ function Login({onLogin,onMultiple}){
           <p style={{marginTop:14,fontSize:12,color:C.muted,textAlign:"center",lineHeight:1.5}}>
             ¿No recuerdas tu número? Contacta con la junta.<br/>Código temporal sin teléfono: <strong>512512</strong>
           </p>
+          {onVolver&&<button onClick={onVolver} style={{width:"100%",marginTop:10,padding:10,background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>← Volver</button>}
         </div>
       </div>
     </div>
@@ -764,8 +899,28 @@ export default function PanelPenista(){
   const [perfilesDisponibles,setPerfilesDisponibles]=useState(null); // para selector
   const [perfilesSession,setPerfilesSession]=useState([]); // todos los perfiles del tel.
   const [generandoPDF,setGenerandoPDF]=useState(false);
+  const [pantalla,setPantalla]=useState("inicial"); // inicial | telefono | cuenta | pendiente
+  const [comprobandoSesion,setComprobandoSesion]=useState(true);
 
-  const logout=()=>{setSocio(null);setTab("inicio");setPerfilesDisponibles(null);setPerfilesSession([]);};
+  const logout=async()=>{
+    await supabase.auth.signOut().catch(()=>{});
+    setSocio(null);setTab("inicio");setPerfilesDisponibles(null);setPerfilesSession([]);setPantalla("inicial");
+  };
+
+  // Al cargar: si hay una sesión de Supabase Auth activa (cuenta usuario/contraseña), entrar directo
+  useEffect(()=>{
+    (async()=>{
+      const {data:{session}}=await supabase.auth.getSession();
+      if(session?.user){
+        const {data:socioRow}=await supabase.from("socios").select("*").eq("auth_user_id",session.user.id).maybeSingle();
+        if(socioRow){
+          if(socioRow.cuenta_aprobada){ setSocio(socioRow); setPerfilesSession([socioRow]); }
+          else setPantalla("pendiente");
+        }
+      }
+      setComprobandoSesion(false);
+    })();
+  },[]);
 
   const handleMultiple=(perfiles)=>{
     setPerfilesSession(perfiles);
@@ -823,7 +978,11 @@ export default function PanelPenista(){
   // Perfiles disponibles para cambiar (el propio + tutelados)
   const otrosPerfiles=perfilesSession.filter(p=>p.id!==socio?.id);
 
-  if(!socio&&!perfilesDisponibles) return <Login onLogin={s=>{setSocio(s);setPerfilesSession([s]);}} onMultiple={handleMultiple}/>;
+  if(comprobandoSesion) return <div style={{minHeight:"100vh",background:C.granateDark,display:"flex",alignItems:"center",justifyContent:"center",color:C.blanco,fontFamily:"system-ui,sans-serif"}}>Cargando...</div>;
+  if(pantalla==="pendiente") return <PantallaPendiente onLogout={logout}/>;
+  if(!socio&&pantalla==="inicial") return <AccesoInicial onCuenta={()=>setPantalla("cuenta")} onTelefono={()=>setPantalla("telefono")}/>;
+  if(!socio&&pantalla==="cuenta") return <AccesoCuenta onLogin={s=>{setSocio(s);setPerfilesSession([s]);}} onPendiente={()=>setPantalla("pendiente")} onVolver={()=>setPantalla("inicial")}/>;
+  if(!socio&&pantalla==="telefono"&&!perfilesDisponibles) return <Login onLogin={s=>{setSocio(s);setPerfilesSession([s]);}} onMultiple={handleMultiple} onVolver={()=>setPantalla("inicial")}/>;
   if(perfilesDisponibles) return <SelectorPerfil perfiles={perfilesDisponibles} onSeleccionar={handleSeleccionar} onVolver={()=>{setPerfilesDisponibles(null);}}/>;
 
   return(
