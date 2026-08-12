@@ -91,6 +91,62 @@ const generarPDFHTML = (socio) => {
   `;
 };
 
+// ── PDF REAL (html2pdf.js vía CDN, sin dependencia en package.json) ────
+let _html2pdfPromise = null;
+const cargarHtml2Pdf = () => {
+  if (window.html2pdf) return Promise.resolve(window.html2pdf);
+  if (_html2pdfPromise) return _html2pdfPromise;
+  _html2pdfPromise = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js";
+    s.onload = () => resolve(window.html2pdf);
+    s.onerror = () => reject(new Error("No se pudo cargar html2pdf.js"));
+    document.head.appendChild(s);
+  });
+  return _html2pdfPromise;
+};
+
+// Genera el PDF a partir del HTML de la ficha y lo sube a Supabase Storage
+// (bucket privado 'fichas'). Devuelve una URL firmada válida 180 días, o null si falla.
+const generarYSubirPDF = async (socio, htmlDoc) => {
+  try {
+    const html2pdf = await cargarHtml2Pdf();
+    const contenedor = document.createElement("div");
+    contenedor.innerHTML = htmlDoc;
+    contenedor.style.position = "fixed";
+    contenedor.style.left = "-9999px";
+    document.body.appendChild(contenedor);
+
+    const blob = await html2pdf()
+      .from(contenedor)
+      .set({
+        margin: 10,
+        filename: "ficha.pdf",
+        html2canvas: { scale: 2, useCORS: true },
+        jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+      })
+      .outputPdf("blob");
+
+    document.body.removeChild(contenedor);
+
+    const nombreArchivo = `${crypto.randomUUID()}.pdf`;
+    const { error: errSubida } = await supabase.storage
+      .from("fichas")
+      .upload(nombreArchivo, blob, { contentType: "application/pdf", upsert: false });
+    if (errSubida) { console.error("Error subiendo PDF:", errSubida); return null; }
+
+    const { data: firmada, error: errFirma } = await supabase.storage
+      .from("fichas")
+      .createSignedUrl(nombreArchivo, 60 * 60 * 24 * 180); // 180 días
+    if (errFirma) { console.error("Error creando enlace firmado:", errFirma); return null; }
+
+    return firmada?.signedUrl || null;
+  } catch (e) {
+    console.error("Error generando PDF:", e);
+    return null;
+  }
+};
+
 // Enviar email via EmailJS
 const enviarEmail = async (destinatario, asunto, mensaje) => {
   try {
@@ -304,17 +360,19 @@ function FormularioUnificado({socio,onEnviado,onLogout,onCambiarPerfil,perfiles}
       }
     }
 
-    // 3. Generar PDF con datos actuales + cambios propuestos
+    // 3. Generar PDF con datos actuales + cambios propuestos, y subirlo a Storage
     const socioPDF={...socio,...form};
     const htmlDoc=generarPDFHTML(socioPDF);
+    const pdfUrl = await generarYSubirPDF(socioPDF, htmlDoc);
+    const enlaceFicha = pdfUrl || "https://reylagarto90.github.io/rana-mecanica/#/verificar"; // fallback si falla la subida
 
     // 4. Enviar email al peñista (mensaje simple)
     const emailDest=form.email||socio.email;
     if(emailDest){
       const tieneCambios=cambios.length>0;
       const mensajePenista = tieneCambios
-        ? `Hola ${socio.nombre},\n\nHemos recibido tu solicitud de cambios en los siguientes datos: ${cambios.map(c=>c.campo).join(", ")}.\n\nLa junta los revisará y aplicará en breve. Tus datos actuales no cambiarán hasta que la junta los apruebe.\n\nPuedes descargar tu ficha provisional desde el portal de verificación:\nhttps://reylagarto90.github.io/rana-mecanica/#/verificar\n\nPara cualquier consulta: penyaranamecanica@gmail.com\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`
-        : `Hola ${socio.nombre},\n\nTus datos y consentimientos han sido verificados correctamente para la temporada 2026/2027. ¡Gracias!\n\nPuedes descargar tu ficha desde el portal de verificación e imprimirla para entregarla firmada al Secretario:\nhttps://reylagarto90.github.io/rana-mecanica/#/verificar\n\nPara cualquier consulta: penyaranamecanica@gmail.com\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`;
+        ? `Hola ${socio.nombre},\n\nHemos recibido tu solicitud de cambios en los siguientes datos: ${cambios.map(c=>c.campo).join(", ")}.\n\nLa junta los revisará y aplicará en breve. Tus datos actuales no cambiarán hasta que la junta los apruebe.\n\nAquí tienes tu ficha provisional en PDF:\n${enlaceFicha}\n\nPara cualquier consulta: penyaranamecanica@gmail.com\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`
+        : `Hola ${socio.nombre},\n\nTus datos y consentimientos han sido verificados correctamente para la temporada 2026/2027. ¡Gracias!\n\nAquí tienes tu ficha en PDF, lista para imprimir y entregar firmada al Secretario:\n${enlaceFicha}\n\nPara cualquier consulta: penyaranamecanica@gmail.com\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`;
       await enviarEmail(emailDest, `La Rana Mecánica · ${tieneCambios?"Solicitud de cambios":"Verificación"} — ${socio.nombre} ${socio.apellidos}`, mensajePenista);
     }
 
@@ -322,11 +380,11 @@ function FormularioUnificado({socio,onEnviado,onLogout,onCambiarPerfil,perfiles}
     const resumenCambios = cambios.length>0
       ? `Cambios solicitados:\n${cambios.map(c=>`  - ${c.campo}: "${c.orig||"(vacío)"}" → "${c.nuevo}"`).join("\n")}`
       : "Ha confirmado que sus datos son correctos.";
-    const mensajeJunta = `${socio.nombre} ${socio.apellidos} (${socio.numero}) ha completado su verificación.\n\n${resumenCambios}\n\nAccede al panel de la junta para gestionar los cambios:\nhttps://reylagarto90.github.io/rana-mecanica/#/junta/login`;
+    const mensajeJunta = `${socio.nombre} ${socio.apellidos} (${socio.numero}) ha completado su verificación.\n\n${resumenCambios}\n\nFicha en PDF:\n${enlaceFicha}\n\nAccede al panel de la junta para gestionar los cambios:\nhttps://reylagarto90.github.io/rana-mecanica/#/junta/login`;
     await enviarEmail(SECRETARIO_EMAIL, `[VERIFICACIÓN] ${socio.nombre} ${socio.apellidos} (${socio.numero})`, mensajeJunta);
 
     setEnviando(false);
-    onEnviado({socio:socioPDF,hayCambios:cambios.length>0,htmlDoc});
+    onEnviado({socio:socioPDF,hayCambios:cambios.length>0,htmlDoc,pdfUrl});
   };
 
   return(
@@ -492,8 +550,10 @@ function FormularioUnificado({socio,onEnviado,onLogout,onCambiarPerfil,perfiles}
 }
 
 // ── CONFIRMACIÓN FINAL ────────────────────────────────
-function Confirmacion({socio,hayCambios,htmlDoc,onLogout}){
+function Confirmacion({socio,hayCambios,htmlDoc,pdfUrl,onLogout}){
   const descargar=()=>{
+    if(pdfUrl){ window.open(pdfUrl,"_blank"); return; }
+    // Fallback si la subida del PDF falló: abre el HTML para imprimir/guardar como PDF
     const v=window.open("","_blank");
     if(v){v.document.write(htmlDoc);v.document.close();setTimeout(()=>v.print(),500);}
   };
@@ -544,5 +604,5 @@ export default function PortalVerificacion(){
   if(pantalla==="login")        return <Login onLogin={s=>{setSocio(s);setPerfiles([s]);setPantalla("formulario");}} onMultiple={handleMultiple}/>;
   if(pantalla==="selector")     return <SelectorPerfil perfiles={perfiles} onSeleccionar={handleSeleccionar} onVolver={()=>setPantalla("login")}/>;
   if(pantalla==="formulario")   return <FormularioUnificado socio={socio} onEnviado={handleEnviado} onLogout={logout} onCambiarPerfil={()=>setPantalla("selector")} perfiles={perfiles}/>;
-  if(pantalla==="confirmacion") return <Confirmacion socio={resultado?.socio||socio} hayCambios={resultado?.hayCambios} htmlDoc={resultado?.htmlDoc} onLogout={logout}/>;
+  if(pantalla==="confirmacion") return <Confirmacion socio={resultado?.socio||socio} hayCambios={resultado?.hayCambios} htmlDoc={resultado?.htmlDoc} pdfUrl={resultado?.pdfUrl} onLogout={logout}/>;
 }
