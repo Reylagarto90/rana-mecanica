@@ -423,6 +423,7 @@ function FormularioUnificado({socio,onEnviado,onLogout,onCambiarPerfil,perfiles}
     fecha_nac: socio.fecha_nac?socio.fecha_nac.split("T")[0]:"",
     email:     socio.email||"",
     telefono:  socio.telefono==="512512"?"":socio.telefono||"",
+    municipio: socio.municipio||"",
     // Levante
     tiene_acciones: socio.tiene_acciones===true,
     num_acciones:   socio.num_acciones||0,
@@ -443,7 +444,7 @@ function FormularioUnificado({socio,onEnviado,onLogout,onCambiarPerfil,perfiles}
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
 
   const hayCambiosDatos=()=>{
-    const campos=["nombre","apellidos","dni","fecha_nac","email","telefono"];
+    const campos=["nombre","apellidos","dni","fecha_nac","email","telefono","municipio"];
     return campos.some(k=>{
       const orig=String(socio[k]||"");
       const nuevo=String(form[k]||"");
@@ -474,7 +475,7 @@ function FormularioUnificado({socio,onEnviado,onLogout,onCambiarPerfil,perfiles}
     }).eq("id",socio.id);
 
     // 2. Si hay cambios en datos personales → crear verificaciones pendientes
-    const camposDatos=["nombre","apellidos","dni","fecha_nac","email","telefono"];
+    const camposDatos=["nombre","apellidos","dni","fecha_nac","email","telefono","municipio"];
     const cambios=[];
     for(const campo of camposDatos){
       const orig=String(socio[campo]||"");
@@ -568,6 +569,7 @@ function FormularioUnificado({socio,onEnviado,onLogout,onCambiarPerfil,perfiles}
               {l:"Fecha nacimiento",k:"fecha_nac",t:"date"},
               {l:"Teléfono",k:"telefono",t:"tel"},
               {l:"Email",k:"email",t:"email"},
+              {l:"Municipio",k:"municipio"},
             ].map(f=>(
               <div key={f.k} style={{marginBottom:12}}>
                 <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:4,textTransform:"uppercase",letterSpacing:0.4}}>{f.l}</label>
