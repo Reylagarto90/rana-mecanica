@@ -810,12 +810,15 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos}){
     ok("✅ Cuota registrada");
   };
 
+  const [procesando,setProcesando]=useState(null);
+
   const marcarPagado=async(id)=>{
+    if(procesando) return;
+    setProcesando(id);
     const c=cuotas.find(x=>x.id===id);
-    await supabase.from("cuotas").update({pagado:true,fecha_pago:hoy}).eq("id",id);
-    setCuotas(p=>p.map(x=>x.id===id?{...x,pagado:true,fecha_pago:hoy}:x));
 
     // Ingreso automático en Tesorería del ejercicio correspondiente a la temporada de la cuota
+    let movimientoId=null;
     if(c && Number(c.importe)>0){
       const socio=getSocio(c.socio_id);
       const ejercicioCuota=ejercicios.find(e=>e.nombre===c.temporada)||ejercicios.find(e=>e.nombre===TEMPORADA_ACTUAL)||ejercicios[ejercicios.length-1];
@@ -826,11 +829,36 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos}){
           categoria:"Cuotas socios",
           importe:Number(c.importe), fecha:hoy, ejercicio_id:ejercicioCuota.id,
         };
-        const {data:movData}=await supabase.from("movimientos_ejercicio").insert([mov]).select();
-        if(movData) setMovimientos(prev=>[...prev,...movData]);
+        const {data:movData,error:errMov}=await supabase.from("movimientos_ejercicio").insert([mov]).select();
+        if(errMov) console.error("Error creando ingreso en Tesorería:",errMov);
+        if(movData?.[0]){ movimientoId=movData[0].id; setMovimientos(prev=>[...prev,...movData]); }
+      } else {
+        console.warn("No se encontró ejercicio para vincular el ingreso de la cuota", c);
       }
     }
-    ok("✅ Cuota marcada como pagada · ingreso añadido a Tesorería");
+
+    await supabase.from("cuotas").update({pagado:true,fecha_pago:hoy,movimiento_id:movimientoId}).eq("id",id);
+    setCuotas(p=>p.map(x=>x.id===id?{...x,pagado:true,fecha_pago:hoy,movimiento_id:movimientoId}:x));
+    setProcesando(null);
+    ok(movimientoId?"✅ Cuota marcada como pagada · ingreso añadido a Tesorería":"✅ Cuota marcada como pagada (revisa Tesorería, no se pudo vincular el ingreso)");
+  };
+
+  const deshacerPago=async(c)=>{
+    if(!confirm(`¿Deshacer el pago de esta cuota? Se eliminará también el ingreso creado en Tesorería.`)) return;
+    if(c.movimiento_id) await supabase.from("movimientos_ejercicio").delete().eq("id",c.movimiento_id);
+    await supabase.from("cuotas").update({pagado:false,fecha_pago:null,movimiento_id:null}).eq("id",c.id);
+    setCuotas(p=>p.map(x=>x.id===c.id?{...x,pagado:false,fecha_pago:null,movimiento_id:null}:x));
+    if(c.movimiento_id) setMovimientos(prev=>prev.filter(m=>m.id!==c.movimiento_id));
+    ok("↩️ Pago deshecho");
+  };
+
+  const eliminarCuota=async(c)=>{
+    if(!confirm(`¿Eliminar esta cuota por completo? ${c.movimiento_id?"También se borrará el ingreso de Tesorería asociado.":""}`)) return;
+    if(c.movimiento_id) await supabase.from("movimientos_ejercicio").delete().eq("id",c.movimiento_id);
+    await supabase.from("cuotas").delete().eq("id",c.id);
+    setCuotas(p=>p.filter(x=>x.id!==c.id));
+    if(c.movimiento_id) setMovimientos(prev=>prev.filter(m=>m.id!==c.movimiento_id));
+    ok("🗑️ Cuota eliminada");
   };
 
   return(<div>
@@ -865,7 +893,13 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos}){
                 <TD>{c.forma_pago||"—"}</TD>
                 <TD>{c.fecha_pago?fmtFecha(c.fecha_pago):"—"}</TD>
                 <TD>{c.pagado?<Pill text="✓ Pagada" color={C.verde} bg={C.verdeLight}/>:<Pill text="⏳ Pendiente" color={C.oro} bg={C.oroLight}/>}</TD>
-                <TD>{!c.pagado&&Number(c.importe)>0&&<Btn small color={C.verde} onClick={()=>marcarPagado(c.id)}>✓ Cobrada</Btn>}</TD>
+                <TD>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {!c.pagado&&Number(c.importe)>0&&<Btn small color={C.verde} onClick={()=>marcarPagado(c.id)} disabled={procesando===c.id}>{procesando===c.id?"...":"✓ Cobrada"}</Btn>}
+                    {c.pagado&&<button onClick={()=>deshacerPago(c)} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:11,fontFamily:"inherit"}}>↩️ Deshacer</button>}
+                    <button onClick={()=>eliminarCuota(c)} style={{background:"none",border:"none",cursor:"pointer",color:C.rojo,fontSize:11,fontFamily:"inherit"}}>🗑️</button>
+                  </div>
+                </TD>
               </tr>);
             })}
           </tbody>
@@ -957,14 +991,17 @@ function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
     ok("✅ Devolución registrada");
   };
 
+  const [procesando,setProcesando]=useState(null);
+
   const liquidar=async(l)=>{
+    if(procesando) return; // evita doble-clic / doble envío
+    setProcesando(l.id);
     const importeFinal=importeCalc(l);
     const socio=getSocio(l.socio_id);
-    await supabase.from("loteria").update({pagado:true,fecha_pago:hoy,importe_total:importeFinal}).eq("id",l.id);
-    setLoteria(p=>p.map(x=>x.id===l.id?{...x,pagado:true,fecha_pago:hoy,importe_total:importeFinal}:x));
 
     // Crear ingreso automático en Tesorería del ejercicio activo
     const ejercicioActivo=ejercicios.find(e=>e.nombre===TEMPORADA_ACTUAL)||ejercicios[ejercicios.length-1];
+    let movimientoId=null;
     if(ejercicioActivo && importeFinal>0){
       const mov={
         tipo:"ingreso",
@@ -973,9 +1010,31 @@ function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
         importe: importeFinal, fecha: hoy, ejercicio_id: ejercicioActivo.id,
       };
       const {data:movData}=await supabase.from("movimientos_ejercicio").insert([mov]).select();
-      if(movData) setMovimientos(prev=>[...prev,...movData]);
+      if(movData?.[0]){ movimientoId=movData[0].id; setMovimientos(prev=>[...prev,...movData]); }
     }
+
+    await supabase.from("loteria").update({pagado:true,fecha_pago:hoy,importe_total:importeFinal,movimiento_id:movimientoId}).eq("id",l.id);
+    setLoteria(p=>p.map(x=>x.id===l.id?{...x,pagado:true,fecha_pago:hoy,importe_total:importeFinal,movimiento_id:movimientoId}:x));
+    setProcesando(null);
     ok(`✅ Liquidado · ingreso añadido a Tesorería (${TEMPORADA_ACTUAL})`);
+  };
+
+  const deshacerLiquidacion=async(l)=>{
+    if(!confirm(`¿Deshacer la liquidación de ${l.concepto}? Se eliminará también el ingreso creado en Tesorería.`)) return;
+    if(l.movimiento_id) await supabase.from("movimientos_ejercicio").delete().eq("id",l.movimiento_id);
+    await supabase.from("loteria").update({pagado:false,fecha_pago:null,movimiento_id:null}).eq("id",l.id);
+    setLoteria(p=>p.map(x=>x.id===l.id?{...x,pagado:false,fecha_pago:null,movimiento_id:null}:x));
+    if(l.movimiento_id) setMovimientos(prev=>prev.filter(m=>m.id!==l.movimiento_id));
+    ok("↩️ Liquidación deshecha");
+  };
+
+  const eliminarLoteria=async(l)=>{
+    if(!confirm(`¿Eliminar por completo esta entrega de "${l.concepto}"? ${l.movimiento_id?"También se borrará el ingreso de Tesorería asociado.":""}`)) return;
+    if(l.movimiento_id) await supabase.from("movimientos_ejercicio").delete().eq("id",l.movimiento_id);
+    await supabase.from("loteria").delete().eq("id",l.id);
+    setLoteria(p=>p.filter(x=>x.id!==l.id));
+    if(l.movimiento_id) setMovimientos(prev=>prev.filter(m=>m.id!==l.movimiento_id));
+    ok("🗑️ Eliminado");
   };
 
   return(<div>
@@ -1014,7 +1073,13 @@ function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
                 <TD style={{fontFamily:"monospace",fontSize:12,color:C.gris}}>{fmt(l.precio_base)}+{fmt(l.recargo)}</TD>
                 <TD style={{fontWeight:700,color:l.pagado?C.verde:C.oro}}>{fmt(l.pagado?l.importe_total:importeCalc(l))}</TD>
                 <TD>{l.pagado?<Pill text="✓ Liquidada" color={C.verde} bg={C.verdeLight}/>:<Pill text="⏳ Pendiente" color={C.oro} bg={C.oroLight}/>}</TD>
-                <TD>{!l.pagado&&<Btn small color={C.verde} onClick={()=>liquidar(l)}>✓ Liquidar</Btn>}</TD>
+                <TD>
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                    {!l.pagado&&<Btn small color={C.verde} onClick={()=>liquidar(l)} disabled={procesando===l.id}>{procesando===l.id?"...":"✓ Liquidar"}</Btn>}
+                    {l.pagado&&<button onClick={()=>deshacerLiquidacion(l)} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:11,fontFamily:"inherit"}}>↩️ Deshacer</button>}
+                    <button onClick={()=>eliminarLoteria(l)} style={{background:"none",border:"none",cursor:"pointer",color:C.rojo,fontSize:11,fontFamily:"inherit"}}>🗑️</button>
+                  </div>
+                </TD>
               </tr>);
             })}
           </tbody>
@@ -1100,12 +1165,14 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
     ok("✅ Actividad creada");
   };
 
-  const marcarPagado=async(inscripcion,actividad)=>{
-    await supabase.from("inscripciones").update({pagado:true,fecha_pago:hoy}).eq("id",inscripcion.id);
-    setInscripciones(prev=>prev.map(i=>i.id===inscripcion.id?{...i,pagado:true,fecha_pago:hoy}:i));
+  const [procesandoPago,setProcesandoPago]=useState(null);
 
+  const marcarPagado=async(inscripcion,actividad)=>{
+    if(procesandoPago) return;
+    setProcesandoPago(inscripcion.id);
     const socio=getSocio(inscripcion.socio_id);
     const importe=Number(actividad.precio_socio)||0;
+    let movimientoId=null;
     if(importe>0){
       const ejercicioActivo=ejercicios.find(e=>e.nombre===TEMPORADA_ACTUAL)||ejercicios[ejercicios.length-1];
       if(ejercicioActivo){
@@ -1116,10 +1183,22 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
           importe, fecha:hoy, ejercicio_id:ejercicioActivo.id,
         };
         const {data:movData}=await supabase.from("movimientos_ejercicio").insert([mov]).select();
-        if(movData) setMovimientos(prev=>[...prev,...movData]);
+        if(movData?.[0]){ movimientoId=movData[0].id; setMovimientos(prev=>[...prev,...movData]); }
       }
     }
+    await supabase.from("inscripciones").update({pagado:true,fecha_pago:hoy,movimiento_id:movimientoId}).eq("id",inscripcion.id);
+    setInscripciones(prev=>prev.map(i=>i.id===inscripcion.id?{...i,pagado:true,fecha_pago:hoy,movimiento_id:movimientoId}:i));
+    setProcesandoPago(null);
     ok(`✅ Pago registrado${importe>0?" · ingreso añadido a Tesorería":""}`);
+  };
+
+  const deshacerPagoActividad=async(inscripcion)=>{
+    if(!confirm("¿Deshacer este pago? Se eliminará también el ingreso creado en Tesorería.")) return;
+    if(inscripcion.movimiento_id) await supabase.from("movimientos_ejercicio").delete().eq("id",inscripcion.movimiento_id);
+    await supabase.from("inscripciones").update({pagado:false,fecha_pago:null,movimiento_id:null}).eq("id",inscripcion.id);
+    setInscripciones(prev=>prev.map(i=>i.id===inscripcion.id?{...i,pagado:false,fecha_pago:null,movimiento_id:null}:i));
+    if(inscripcion.movimiento_id) setMovimientos(prev=>prev.filter(m=>m.id!==inscripcion.movimiento_id));
+    ok("↩️ Pago deshecho");
   };
 
   return(<div>
@@ -1184,8 +1263,11 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
                     </div>
                     {verInscritos.precio_socio>0?(
                       i.pagado?
-                        <Pill text="✓ Pagado" color={C.verde} bg={C.verdeLight}/>
-                      :<Btn small color={C.verde} onClick={()=>marcarPagado(i,verInscritos)}>✓ Marcar pagado</Btn>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <Pill text="✓ Pagado" color={C.verde} bg={C.verdeLight}/>
+                          <button onClick={()=>deshacerPagoActividad(i)} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:11,fontFamily:"inherit"}}>↩️</button>
+                        </div>
+                      :<Btn small color={C.verde} onClick={()=>marcarPagado(i,verInscritos)} disabled={procesandoPago===i.id}>{procesandoPago===i.id?"...":"✓ Marcar pagado"}</Btn>
                     ):(
                       <Pill text="Gratuita" color={C.gris} bg="#eee"/>
                     )}
@@ -1289,6 +1371,13 @@ function Tesoreria({ejercicios,setEjercicios,movimientos,setMovimientos}){
     ok("✅ Movimiento registrado");
   };
 
+  const eliminarMovimiento=async(m)=>{
+    if(!confirm(`¿Eliminar este ${m.tipo} de "${m.concepto}" (${fmt(m.importe)})? Los totales se recalculan solos al borrarlo.`)) return;
+    await supabase.from("movimientos_ejercicio").delete().eq("id",m.id);
+    setMovimientos(prev=>prev.filter(x=>x.id!==m.id));
+    ok("🗑️ Movimiento eliminado, totales actualizados");
+  };
+
   const CAT_ING=["Cuotas socios","Patrocinio","Lotería Navidad","Lotería Niño","Venta productos","Remanente ejercicio anterior","Otros ingresos"];
   const CAT_GAS=["Merchandising","Actos y eventos","Lotería (coste)","Diseño y material","Otros gastos"];
 
@@ -1327,12 +1416,15 @@ function Tesoreria({ejercicios,setEjercicios,movimientos,setMovimientos}){
             <div style={{color:C.blanco,fontWeight:700,fontSize:14}}>{tipo==="ingreso"?"INGRESOS":"GASTOS"}</div>
           </div>
           {lista.map(m=>(
-            <div key={m.id} style={{display:"flex",justifyContent:"space-between",padding:"9px 16px",borderBottom:`1px solid ${C.border}`}}>
+            <div key={m.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 16px",borderBottom:`1px solid ${C.border}`}}>
               <div>
                 <div style={{fontSize:13,fontWeight:600}}>{m.concepto}</div>
                 <div style={{fontSize:10,color:C.muted}}>{m.categoria}</div>
               </div>
-              <span style={{fontWeight:700,color,fontSize:14}}>{fmt(m.importe)}</span>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontWeight:700,color,fontSize:14}}>{fmt(m.importe)}</span>
+                <button onClick={()=>eliminarMovimiento(m)} title="Eliminar" style={{background:"none",border:"none",cursor:"pointer",color:C.muted,fontSize:13,fontFamily:"inherit"}}>🗑️</button>
+              </div>
             </div>
           ))}
           <div style={{display:"flex",justifyContent:"space-between",padding:"12px 18px",background:`${color}12`}}>
