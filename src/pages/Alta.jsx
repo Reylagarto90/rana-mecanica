@@ -1,4 +1,10 @@
 import { useState } from "react";
+import { supabase, insertarSolicitudAlta } from "../supabase.js";
+
+const EMAILJS_SERVICE_ID  = "service_g9n6e5c";
+const EMAILJS_TEMPLATE_ID = "template_0rjj2y8";
+const EMAILJS_PUBLIC_KEY  = "IvxWWpgwA15GDRGyF";
+const SECRETARIO_EMAIL    = "penyaranamecanica@gmail.com";
 
 const C = {
   granate: "#8B1A2F", granateDark: "#6B0F20", granateLight: "#f9eaed",
@@ -6,11 +12,157 @@ const C = {
   border: "#e2e8f0", text: "#1e293b", muted: "#94a3b8", blanco: "#fff", crema: "#FFF8F0",
 };
 
+// Tipos de socio reales (según tabla `tarifas` de Supabase)
 const TIPOS = [
-  { value: "adulto", label: "Adulto", precio: 30, desc: "Mayor de 18 años" },
-  { value: "juvenil", label: "Juvenil", precio: 20, desc: "Menor de 18 años" },
-  { value: "familia", label: "Familia", precio: 45, desc: "Unidad familiar completa" },
+  { value: "adulto",   tarifa_clave: "nueva_alta",     label: "General", precio: 30, desc: "Mayor de edad" },
+  { value: "infantil", tarifa_clave: "infantil_mayor", label: "Niños",   precio: 10, desc: "Más de 3 años" },
+  { value: "infantil", tarifa_clave: "infantil_0_3",   label: "Bebé",    precio: 0,  desc: "De 0 a 3 años" },
 ];
+
+// ── PDF con jsPDF (mismo motor validado en Verificar.jsx) ──────────
+let _jsPDFPromise = null;
+const cargarJsPDF = () => {
+  if (window.jspdf?.jsPDF) return Promise.resolve(window.jspdf.jsPDF);
+  if (_jsPDFPromise) return _jsPDFPromise;
+  _jsPDFPromise = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    s.onload = () => resolve(window.jspdf.jsPDF);
+    s.onerror = () => reject(new Error("No se pudo cargar jsPDF"));
+    document.head.appendChild(s);
+  });
+  return _jsPDFPromise;
+};
+
+const generarPDFAlta = async (form, tipoSelec) => {
+  const jsPDFCtor = await cargarJsPDF();
+  const doc = new jsPDFCtor({ unit: "mm", format: "a4" });
+  const M = 15, W = 210 - M * 2, PH = 297;
+  let y = M;
+  const check = (alto) => { if (y + alto > PH - M) { doc.addPage(); y = M; } };
+  const si_no = (v) => v ? "Sí" : "No";
+  const ahora = new Date().toLocaleString("es-ES");
+
+  doc.setFillColor(139,10,58);
+  doc.roundedRect(M, y, W, 20, 2, 2, "F");
+  doc.setTextColor(255,255,255);
+  doc.setFont("helvetica","bold"); doc.setFontSize(14);
+  doc.text("Peña Levantinista La Rana Mecánica", M+6, y+9);
+  doc.setFont("helvetica","normal"); doc.setFontSize(9);
+  doc.text("Solicitud de alta · Godella-Rocafort", M+6, y+15);
+  y += 28;
+
+  const titulo=(txt)=>{
+    check(10);
+    doc.setTextColor(139,10,58); doc.setFont("helvetica","bold"); doc.setFontSize(12);
+    doc.text(txt, M, y);
+    doc.setDrawColor(139,10,58); doc.line(M, y+1.5, M+W, y+1.5);
+    y += 8;
+  };
+  let filaIdx=0;
+  const fila=(label,valor)=>{
+    const alto=7; check(alto);
+    if(filaIdx%2===0){ doc.setFillColor(248,250,252); doc.rect(M,y-4.5,W,alto,"F"); }
+    filaIdx++;
+    doc.setTextColor(30,41,59); doc.setFont("helvetica","bold"); doc.setFontSize(9.5);
+    doc.text(label, M+2, y);
+    doc.setFont("helvetica","normal");
+    doc.text(String(valor), M+2+W*0.42, y);
+    y += alto;
+  };
+  const tabla=(filas)=>{ filaIdx=0; filas.forEach(([l,v])=>fila(l,v)); y+=5; };
+  const caja=(titulo2, texto, rgb, rgbTexto)=>{
+    doc.setFont("helvetica","bold"); doc.setFontSize(9);
+    const lineasTitulo = doc.splitTextToSize(titulo2, W-8);
+    doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+    const lineasTexto = doc.splitTextToSize(texto, W-8);
+    const altoCaja = 6 + lineasTitulo.length*4.5 + lineasTexto.length*4 + 6;
+    check(altoCaja);
+    doc.setFillColor(...rgb);
+    doc.roundedRect(M, y-4, W, altoCaja, 2, 2, "F");
+    let yy=y+2;
+    doc.setTextColor(...rgbTexto); doc.setFont("helvetica","bold"); doc.setFontSize(9);
+    lineasTitulo.forEach(l=>{ doc.text(l, M+4, yy); yy+=4.5; });
+    doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+    lineasTexto.forEach(l=>{ doc.text(l, M+4, yy); yy+=4; });
+    y += altoCaja + 6;
+  };
+
+  titulo("Datos del solicitante");
+  tabla([
+    ["Nombre completo", `${form.nombre} ${form.apellidos}`],
+    ["DNI / NIE", form.dni||"—"],
+    ["Fecha nacimiento", form.fechaNac||"—"],
+    ["Teléfono", form.telefono||"—"],
+    ["Email", form.email||"—"],
+    ["Municipio", form.municipio||"—"],
+    ["Tipo de socio", `${tipoSelec?.label} — ${tipoSelec?.precio}€/año`],
+    ["Acciones Levante", form.tieneAcciones?`Sí (${form.numAcciones||1})`:"No"],
+    ["Abonado/a", form.esAbonado?`Sí${form.numAbonado?" — Nº "+form.numAbonado:""}`:"No"],
+  ]);
+
+  titulo("Consentimientos otorgados");
+  tabla([
+    ["Tratamiento de datos (obligatorio)", si_no(form.rgpd)],
+    ["Foto comunicación interna", si_no(form.consentFotoInterna)],
+    ["Foto redes sociales", si_no(form.consentFotoRrss)],
+    ["Foto web y materiales", si_no(form.consentFotoWeb)],
+    ["Foto cesión Levante UD/Federación", si_no(form.consentFotoLevante)],
+    ["Comunicaciones promocionales peña", si_no(form.consentPromoPena)],
+    ["Info patrocinadores", si_no(form.consentPatrocinadores)],
+    ["Grupo WhatsApp", si_no(form.consentWhatsapp)],
+  ]);
+
+  caja("", `Solicitud enviada digitalmente el ${ahora} a través del portal de alta de la Peña Levantinista La Rana Mecánica. Pendiente de revisión y aprobación por la junta directiva.`,
+    [240,253,244],[22,101,52]);
+
+  if(form.comentarios){
+    caja("Comentarios del solicitante", form.comentarios, [254,249,195],[113,63,18]);
+  }
+
+  caja("Nota", "Este documento debe imprimirse, firmarse por el solicitante (o su tutor legal si es menor de edad) y entregarse al Secretario de la Peña para su archivo.", [254,242,242],[30,41,59]);
+
+  check(30);
+  doc.setDrawColor(226,232,240); doc.line(M,y,M+W,y); y+=8;
+  doc.setTextColor(100,116,139); doc.setFont("helvetica","normal"); doc.setFontSize(9.5);
+  doc.text("Firma del solicitante / tutor legal (en caso de menor):", M, y); y+=16;
+  doc.setDrawColor(148,163,184); doc.line(M,y,M+70,y); y+=5;
+  doc.setFontSize(8.5); doc.setTextColor(148,163,184);
+  doc.text(`Nombre: ${form.nombre} ${form.apellidos}     Fecha: ___/___/______`, M, y);
+
+  const nPaginas = doc.internal.getNumberOfPages();
+  for(let i=1;i<=nPaginas;i++){
+    doc.setPage(i);
+    doc.setFontSize(8); doc.setTextColor(148,163,184);
+    doc.text("Peña Levantinista La Rana Mecánica · Godella-Rocafort · penyaranamecanica@gmail.com", 105, 290, {align:"center"});
+  }
+  return doc.output("blob");
+};
+
+const subirPDFAlta = async (blob) => {
+  try{
+    const nombreArchivo = `alta-${crypto.randomUUID()}.pdf`;
+    const { error: errSubida } = await supabase.storage.from("fichas").upload(nombreArchivo, blob, { contentType: "application/pdf", upsert: false });
+    if (errSubida) { console.error("Error subiendo PDF alta:", errSubida); return null; }
+    const { data: firmada, error: errFirma } = await supabase.storage.from("fichas").createSignedUrl(nombreArchivo, 60*60*24*180);
+    if (errFirma) { console.error("Error firmando URL alta:", errFirma); return null; }
+    return firmada?.signedUrl || null;
+  }catch(e){ console.error("Error PDF alta:", e); return null; }
+};
+
+const enviarEmail = async (destinatario, asunto, mensaje) => {
+  try{
+    const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        service_id: EMAILJS_SERVICE_ID, template_id: EMAILJS_TEMPLATE_ID, user_id: EMAILJS_PUBLIC_KEY,
+        template_params: { to_email: destinatario, subject: asunto, message: mensaje, name: "La Rana Mecánica", reply_to: SECRETARIO_EMAIL },
+      }),
+    });
+    if(!res.ok){ const txt = await res.text(); console.error("EmailJS error:", res.status, txt); }
+  }catch(e){ console.error("Error enviando email:", e); }
+};
 
 const MUNICIPIOS = ["Godella", "Rocafort", "Moncada", "Bétera", "Burjassot", "Paterna", "Valencia", "Otro"];
 
@@ -66,7 +218,7 @@ export default function FormularioAlta() {
   const [form, setForm] = useState({
     nombre: "", apellidos: "", dni: "", fechaNac: "",
     telefono: "", email: "", municipio: "", comoConocio: "",
-    tipo: "adulto", rgpd: false, comentarios: "",
+    tipo: "adulto", tarifa_clave: "nueva_alta", rgpd: false, comentarios: "",
     tieneAcciones: false, numAcciones: 0, esAbonado: false, numAbonado: "",
     consentFotoInterna: false, consentFotoRrss: false, consentFotoWeb: false,
     consentFotoLevante: false, consentPromoPena: false, consentPatrocinadores: false,
@@ -92,7 +244,10 @@ export default function FormularioAlta() {
     return e;
   };
 
-  const siguiente = () => {
+  const [enviando, setEnviando] = useState(false);
+  const [errorEnvio, setErrorEnvio] = useState("");
+
+  const siguiente = async () => {
     if (paso === 0) {
       const e = validarPaso0();
       if (Object.keys(e).length) { setErrores(e); return; }
@@ -100,6 +255,46 @@ export default function FormularioAlta() {
     if (paso === 2) {
       const e = validarPaso2();
       if (Object.keys(e).length) { setErrores(e); return; }
+      setEnviando(true); setErrorEnvio("");
+
+      const registro = {
+        nombre: form.nombre, apellidos: form.apellidos, dni: form.dni||null,
+        fecha_nac: form.fechaNac||null, telefono: form.telefono, email: form.email||null,
+        municipio: form.municipio, tipo: form.tipo, tarifa_clave: form.tarifa_clave,
+        tiene_acciones: form.tieneAcciones, num_acciones: form.tieneAcciones?Number(form.numAcciones)||0:0,
+        es_abonado: form.esAbonado, num_abonado: form.esAbonado?form.numAbonado:null,
+        rgpd: form.rgpd, consent_foto_interna: form.consentFotoInterna, consent_foto_rrss: form.consentFotoRrss,
+        consent_foto_web: form.consentFotoWeb, consent_foto_levante: form.consentFotoLevante,
+        consent_promo_pena: form.consentPromoPena, consent_patrocinadores: form.consentPatrocinadores,
+        consent_whatsapp: form.consentWhatsapp, comentarios: form.comentarios||null,
+        fecha_consentimiento: new Date().toISOString(), estado: "pendiente",
+      };
+
+      const { ok, error } = await insertarSolicitudAlta(registro);
+      if (!ok) {
+        console.error("Error insertando solicitud de alta:", error);
+        setEnviando(false);
+        setErrorEnvio("No se ha podido enviar la solicitud. Comprueba tu conexión e inténtalo de nuevo.");
+        return;
+      }
+
+      // Generar PDF + email (best-effort: si falla, la solicitud ya está guardada igualmente)
+      let pdfUrl = null;
+      try {
+        const blob = await generarPDFAlta(form, tipoSelec);
+        pdfUrl = await subirPDFAlta(blob);
+      } catch (e) { console.error("Error generando PDF de alta:", e); }
+
+      const enlace = pdfUrl || "https://reylagarto90.github.io/rana-mecanica/#/alta";
+      const mensajeSecretaria = `Nueva solicitud de alta recibida:\n\n${form.nombre} ${form.apellidos}\nTeléfono: ${form.telefono}\nEmail: ${form.email||"—"}\nMunicipio: ${form.municipio}\nTipo: ${tipoSelec?.label} (${tipoSelec?.precio}€/año)\n\nFicha en PDF:\n${enlace}\n\nRevísala y gestiónala en el panel de junta:\nhttps://reylagarto90.github.io/rana-mecanica/#/junta/login`;
+      await enviarEmail(SECRETARIO_EMAIL, `[NUEVA ALTA] ${form.nombre} ${form.apellidos}`, mensajeSecretaria);
+
+      if (form.email) {
+        const mensajeSolicitante = `Hola ${form.nombre},\n\nHemos recibido tu solicitud para unirte a la Peña Levantinista La Rana Mecánica. La junta directiva la revisará y te contactará en breve.\n\nAquí tienes tu ficha en PDF, para imprimir, firmar y entregar al Secretario:\n${enlace}\n\nPara cualquier consulta: penyaranamecanica@gmail.com\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`;
+        await enviarEmail(form.email, "La Rana Mecánica · Solicitud de alta recibida", mensajeSolicitante);
+      }
+
+      setEnviando(false);
       setEnviado(true);
       return;
     }
@@ -107,7 +302,7 @@ export default function FormularioAlta() {
     setPaso(p => p + 1);
   };
 
-  const tipoSelec = TIPOS.find(t => t.value === form.tipo);
+  const tipoSelec = TIPOS.find(t => t.tarifa_clave === form.tarifa_clave);
 
   if (enviado) {
     return (
@@ -283,19 +478,19 @@ export default function FormularioAlta() {
               <p style={{ color: C.muted, fontSize: 13, marginBottom: 22 }}>Elige la modalidad que mejor se adapta a ti.</p>
               <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 22 }}>
                 {TIPOS.map(t => (
-                  <div key={t.value} onClick={() => set("tipo", t.value)} style={{
+                  <div key={t.tarifa_clave} onClick={() => { set("tipo", t.value); set("tarifa_clave", t.tarifa_clave); }} style={{
                     padding: "18px 20px", borderRadius: 14,
-                    border: `2.5px solid ${form.tipo === t.value ? C.granate : C.border}`,
-                    background: form.tipo === t.value ? C.granateLight : C.blanco,
+                    border: `2.5px solid ${form.tarifa_clave === t.tarifa_clave ? C.granate : C.border}`,
+                    background: form.tarifa_clave === t.tarifa_clave ? C.granateLight : C.blanco,
                     cursor: "pointer", transition: "all 0.2s",
                     display: "flex", justifyContent: "space-between", alignItems: "center"
                   }}>
                     <div>
-                      <div style={{ fontWeight: 700, fontSize: 16, color: form.tipo === t.value ? C.granateDark : C.text }}>{t.label}</div>
+                      <div style={{ fontWeight: 700, fontSize: 16, color: form.tarifa_clave === t.tarifa_clave ? C.granateDark : C.text }}>{t.label}</div>
                       <div style={{ fontSize: 13, color: C.muted, marginTop: 2 }}>{t.desc}</div>
                     </div>
                     <div style={{ textAlign: "right" }}>
-                      <div style={{ fontSize: 22, fontWeight: 800, color: form.tipo === t.value ? C.granate : C.text }}>{t.precio}€</div>
+                      <div style={{ fontSize: 22, fontWeight: 800, color: form.tarifa_clave === t.tarifa_clave ? C.granate : C.text }}>{t.precio}€</div>
                       <div style={{ fontSize: 11, color: C.muted }}>/ año</div>
                     </div>
                   </div>
@@ -385,19 +580,23 @@ export default function FormularioAlta() {
             </div>
           )}
 
+          {errorEnvio && (
+            <div style={{ marginTop: 14, padding: "10px 14px", background: "#fdecea", borderRadius: 10, fontSize: 13, color: "#c0392b" }}>⚠ {errorEnvio}</div>
+          )}
+
           {/* NAVEGACIÓN */}
           <div style={{ display: "flex", gap: 12, marginTop: 26 }}>
             {paso > 0 && (
-              <button onClick={() => setPaso(p => p - 1)} style={{ flex: 1, padding: "14px", background: C.blanco, border: `2px solid ${C.border}`, borderRadius: 12, cursor: "pointer", fontWeight: 700, fontSize: 15, color: C.text }}>
+              <button onClick={() => setPaso(p => p - 1)} disabled={enviando} style={{ flex: 1, padding: "14px", background: C.blanco, border: `2px solid ${C.border}`, borderRadius: 12, cursor: enviando?"not-allowed":"pointer", fontWeight: 700, fontSize: 15, color: C.text }}>
                 ← Atrás
               </button>
             )}
-            <button onClick={siguiente} style={{
-              flex: 2, padding: "14px", background: C.granate, border: "none", borderRadius: 12,
-              cursor: "pointer", fontWeight: 700, fontSize: 16, color: C.blanco,
+            <button onClick={siguiente} disabled={enviando} style={{
+              flex: 2, padding: "14px", background: enviando?"#bbb":C.granate, border: "none", borderRadius: 12,
+              cursor: enviando?"not-allowed":"pointer", fontWeight: 700, fontSize: 16, color: C.blanco,
               boxShadow: `0 4px 16px ${C.granate}60`, transition: "opacity 0.2s"
             }}>
-              {paso === 2 ? "🐸 Enviar solicitud" : "Siguiente →"}
+              {enviando ? "Enviando..." : paso === 2 ? "🐸 Enviar solicitud" : "Siguiente →"}
             </button>
           </div>
         </div>

@@ -520,16 +520,30 @@ function Solicitudes({solicitudes,setSolicitudes,socios,setSocios,setCuotas}){
     // Calcular siguiente número
     const nums=socios.map(s=>parseInt(s.numero.replace("LRM-",""))).filter(n=>!isNaN(n));
     const siguiente=`LRM-${String(Math.max(0,...nums)+1).padStart(4,"0")}`;
-    // Crear socio
+    // Crear socio (se copian todos los consentimientos y datos de Levante de la solicitud)
     const {data:nuevo,error}=await supabase.from("socios").insert([{
       numero:siguiente, nombre:sol.nombre, apellidos:sol.apellidos,
       dni:sol.dni||null, telefono:sol.telefono||null, email:sol.email||null,
       municipio:sol.municipio||null, tipo:sol.tipo||"adulto",
-      fecha_alta:hoy, estado:"activo", rgpd:sol.rgpd||false, foto_aut:sol.foto_aut||false,
+      fecha_alta:hoy, estado:"activo",
+      rgpd:sol.rgpd||false,
+      consent_foto_interna:sol.consent_foto_interna||false,
+      consent_foto_rrss:sol.consent_foto_rrss||false,
+      consent_foto_web:sol.consent_foto_web||false,
+      consent_foto_levante:sol.consent_foto_levante||false,
+      consent_promo_pena:sol.consent_promo_pena||false,
+      consent_patrocinadores:sol.consent_patrocinadores||false,
+      consent_whatsapp:sol.consent_whatsapp||false,
+      fecha_consentimiento:sol.fecha_consentimiento||hoy,
+      tiene_acciones:sol.tiene_acciones||false, num_acciones:sol.num_acciones||0,
+      es_abonado:sol.es_abonado||false, num_abonado:sol.num_abonado||null,
     }]).select();
     if(error){ok("❌ Error al crear socio",C.rojo);return;}
-    // Crear cuota
-    const cuotaImp=sol.tipo==="infantil"?0:sol.tipo==="honorifico"?0:30;
+    // Crear cuota — importe según la tarifa real seleccionada en la solicitud
+    const IMPORTE_POR_TARIFA={nueva_alta:30, infantil_mayor:10, infantil_0_3:0, honorifico:0};
+    const cuotaImp = sol.tarifa_clave!=null
+      ? (IMPORTE_POR_TARIFA[sol.tarifa_clave] ?? 30)
+      : (sol.tipo==="infantil"?0:sol.tipo==="honorifico"?0:30); // fallback para solicitudes antiguas sin tarifa_clave
     await supabase.from("cuotas").insert([{
       socio_id:nuevo[0].id, temporada:TEMPORADA_ACTUAL,
       categoria:"nueva_alta", importe:cuotaImp, pagado:false,
