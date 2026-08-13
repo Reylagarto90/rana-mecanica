@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Fragment } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "../supabase.js";
 
@@ -133,6 +133,7 @@ const TABS = [
   {id:"actividades",  label:"Actividades",   icon:"📅"},
   {id:"noticias",     label:"Noticias",      icon:"📢"},
   {id:"actas",        label:"Actas",         icon:"📜"},
+  {id:"auditoria",    label:"Auditoría",     icon:"🔍"},
   {id:"tesoreria",    label:"Tesorería",     icon:"📒"},
   {id:"configuracion",label:"Config.",       icon:"⚙️"},
 ];
@@ -149,6 +150,20 @@ function Dashboard({socios,cuotas,actividades,solicitudes,verificaciones,setTab}
   const morosos = activos.filter(s=>cuotas.some(c=>c.socio_id===s.id&&!c.pagado&&c.temporada===TEMPORADA_ACTUAL));
   const municipios = {};
   activos.forEach(s=>{ if(s.municipio) municipios[s.municipio]=(municipios[s.municipio]||0)+1; });
+
+  // Desglose por franja de edad (calculada desde fecha_nac; sin fecha, se usa tipo como aproximación)
+  const bucketEdad = (s) => {
+    const edad = calcularEdad(s.fecha_nac);
+    if(edad!=null){
+      if(edad<=3) return "bebe";
+      if(edad<18) return "nino";
+      return "adulto";
+    }
+    return s.tipo==="infantil" ? "nino" : "adulto";
+  };
+  const nAdultos = activos.filter(s=>bucketEdad(s)==="adulto").length;
+  const nNinos   = activos.filter(s=>bucketEdad(s)==="nino").length;
+  const nBebes   = activos.filter(s=>bucketEdad(s)==="bebe").length;
 
   return(<div>
     <div style={{marginBottom:24}}>
@@ -173,7 +188,7 @@ function Dashboard({socios,cuotas,actividades,solicitudes,verificaciones,setTab}
     )}
 
     <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:22}}>
-      <KPI label="Peñistas activos" value={activos.length} icon="👥" color={C.granate}/>
+      <KPI label="Peñistas activos" value={activos.length} icon="👥" color={C.granate} sub={`${nAdultos} adultos · ${nNinos} niños · ${nBebes} bebés`}/>
       <KPI label="Cuotas cobradas" value={fmt(cobradas)} icon="✅" color={C.verde}/>
       <KPI label="Pendiente cobrar" value={fmt(pendiente)} icon="⏳" color={C.oro}/>
       <KPI label="Actividades" value={actividades.length} icon="📅" color={C.azul}/>
@@ -780,6 +795,13 @@ function Verificaciones({verificaciones,setVerificaciones,socios,setSocios}){
     ok(`Corrección rechazada`,C.rojo);
   };
 
+  const eliminar=async(v)=>{
+    if(!confirm("¿Eliminar este registro de verificación? No se puede deshacer.")) return;
+    await supabase.from("verificaciones").delete().eq("id",v.id);
+    setVerificaciones(p=>p.filter(x=>x.id!==v.id));
+    ok("🗑️ Eliminado");
+  };
+
   const campoBonito=(c)=>({nombre:"Nombre",apellidos:"Apellidos",dni:"DNI/NIE",telefono:"Teléfono",email:"Email",fecha_nac:"Fecha nacimiento"}[c]||c);
 
   return(<div>
@@ -820,6 +842,7 @@ function Verificaciones({verificaciones,setVerificaciones,socios,setSocios}){
             <div style={{display:"flex",gap:8}}>
               <button onClick={()=>rechazar(v)} style={{flex:1,padding:"9px",background:C.blanco,border:`1.5px solid ${C.rojo}`,borderRadius:8,cursor:"pointer",fontWeight:700,color:C.rojo,fontSize:13,fontFamily:"inherit"}}>❌ Rechazar</button>
               <button onClick={()=>aprobar(v)} style={{flex:2,padding:"9px",background:C.verde,border:"none",borderRadius:8,cursor:"pointer",fontWeight:700,color:C.blanco,fontSize:13,fontFamily:"inherit"}}>✅ Aprobar y aplicar</button>
+              <button onClick={()=>eliminar(v)} title="Eliminar" style={{padding:"9px 12px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",color:C.gris,fontSize:13,fontFamily:"inherit"}}>🗑️</button>
             </div>
           </Card>);
         })}
@@ -831,7 +854,7 @@ function Verificaciones({verificaciones,setVerificaciones,socios,setSocios}){
         <div style={{padding:"14px 18px",borderBottom:`1px solid ${C.border}`,fontWeight:700,color:C.granateDark}}>Historial ({historial.length})</div>
         <div style={{overflowX:"auto"}}>
           <table style={{width:"100%",borderCollapse:"collapse"}}>
-            <thead><tr>{["Socio","Campo","Valor nuevo","Estado","Fecha"].map(h=><TH key={h}>{h}</TH>)}</tr></thead>
+            <thead><tr>{["Socio","Campo","Valor nuevo","Estado","Fecha",""].map(h=><TH key={h}>{h}</TH>)}</tr></thead>
             <tbody>
               {historial.map((v,i)=>{
                 const s=getSocio(v.socio_id);
@@ -841,6 +864,7 @@ function Verificaciones({verificaciones,setVerificaciones,socios,setSocios}){
                   <TD>{v.valor_nuevo}</TD>
                   <TD>{v.estado==="aprobada"?<Pill text="✅ Aprobada" color={C.verde} bg={C.verdeLight}/>:<Pill text="❌ Rechazada" color={C.rojo} bg={C.rojoLight}/>}</TD>
                   <TD style={{color:C.muted}}>{fmtFecha(v.fecha_gestion||v.created_at)}</TD>
+                  <TD><button onClick={()=>eliminar(v)} style={{background:"none",border:"none",cursor:"pointer",color:C.rojo,fontSize:13}}>🗑️</button></TD>
                 </tr>);
               })}
             </tbody>
@@ -854,7 +878,7 @@ function Verificaciones({verificaciones,setVerificaciones,socios,setSocios}){
 // ══════════════════════════════════════════════════════════
 // CUOTAS
 // ══════════════════════════════════════════════════════════
-function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos}){
+function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
   const [modal,setModal]=useState(false);
   const [filtro,setFiltro]=useState("pendientes");
   const [form,setForm]=useState({socio_id:"",temporada:TEMPORADA_ACTUAL,categoria:"nueva_alta",importe:"",pagado:false,fecha_pago:"",forma_pago:"Bizum"});
@@ -991,6 +1015,14 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos}){
     <Modal open={modal} onClose={()=>setModal(false)} title="Registrar cuota">
       <Select label="Socio" value={form.socio_id} onChange={v=>setF("socio_id",v)} required
         options={[{value:"",label:"— Selecciona socio —"},...socios.filter(s=>s.estado==="activo").map(s=>({value:s.id,label:`${s.nombre} ${s.apellidos} (${s.numero})`}))]}/>
+      <Select label="Tarifa" value={form.categoria} onChange={v=>{
+          setF("categoria",v);
+          const t=tarifas.find(t=>t.clave===v);
+          if(t) setF("importe",t.importe);
+        }}
+        options={tarifas.length>0
+          ? tarifas.map(t=>({value:t.clave,label:`${t.label} — ${fmt(t.importe)}`}))
+          : [{value:"nueva_alta",label:"Nueva alta"},{value:"renovacion",label:"Renovación"}]}/>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px"}}>
         <Input label="Importe (€)" value={form.importe} onChange={v=>setF("importe",v)} type="number"/>
         <Select label="Forma pago" value={form.forma_pago} onChange={v=>setF("forma_pago",v)} options={["Efectivo","Bizum","Transferencia"]}/>
@@ -1338,6 +1370,18 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
     ok("↩️ Pago deshecho");
   };
 
+  const confirmarPlaza=async(inscripcion)=>{
+    await supabase.from("inscripciones").update({estado:"confirmada"}).eq("id",inscripcion.id);
+    setInscripciones(prev=>prev.map(i=>i.id===inscripcion.id?{...i,estado:"confirmada"}:i));
+    ok("✅ Plaza confirmada");
+  };
+
+  const quitarConfirmacion=async(inscripcion)=>{
+    await supabase.from("inscripciones").update({estado:"pendiente"}).eq("id",inscripcion.id);
+    setInscripciones(prev=>prev.map(i=>i.id===inscripcion.id?{...i,estado:"pendiente"}:i));
+    ok("Vuelta a pendiente");
+  };
+
   return(<div>
     {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.verde,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14}}>{notif}</div>}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:12}}>
@@ -1404,21 +1448,34 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
               {inscritos.map(i=>{
                 const s=getSocio(i.socio_id);
                 return(
-                  <div key={i.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 12px",background:C.grisLight,borderRadius:9}}>
-                    <div>
-                      <div style={{fontWeight:600,fontSize:13}}>{s?`${s.nombre} ${s.apellidos}`:"—"}</div>
-                      <div style={{fontSize:11,color:C.muted}}>{s?.numero}</div>
+                  <div key={i.id} style={{display:"flex",flexDirection:"column",gap:6,padding:"9px 12px",background:C.grisLight,borderRadius:9}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div>
+                        <div style={{fontWeight:600,fontSize:13}}>{s?`${s.nombre} ${s.apellidos}`:"—"}</div>
+                        <div style={{fontSize:11,color:C.muted}}>{s?.numero}</div>
+                      </div>
+                      {verInscritos.precio_socio>0?(
+                        i.pagado?
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <Pill text="✓ Pagado" color={C.verde} bg={C.verdeLight}/>
+                            <button onClick={()=>deshacerPagoActividad(i)} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:11,fontFamily:"inherit"}}>↩️</button>
+                          </div>
+                        :<Btn small color={C.verde} onClick={()=>marcarPagado(i,verInscritos)} disabled={procesandoPago===i.id}>{procesandoPago===i.id?"...":"✓ Marcar pagado"}</Btn>
+                      ):(
+                        <Pill text="Gratuita" color={C.gris} bg="#eee"/>
+                      )}
                     </div>
-                    {verInscritos.precio_socio>0?(
-                      i.pagado?
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",paddingTop:6,borderTop:`1px solid ${C.border}`}}>
+                      <span style={{fontSize:11,color:C.muted}}>Plaza:</span>
+                      {i.estado==="confirmada"?(
                         <div style={{display:"flex",alignItems:"center",gap:8}}>
-                          <Pill text="✓ Pagado" color={C.verde} bg={C.verdeLight}/>
-                          <button onClick={()=>deshacerPagoActividad(i)} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:11,fontFamily:"inherit"}}>↩️</button>
+                          <Pill text="✅ Confirmada" color={C.verde} bg={C.verdeLight}/>
+                          <button onClick={()=>quitarConfirmacion(i)} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:11,fontFamily:"inherit"}}>↩️</button>
                         </div>
-                      :<Btn small color={C.verde} onClick={()=>marcarPagado(i,verInscritos)} disabled={procesandoPago===i.id}>{procesandoPago===i.id?"...":"✓ Marcar pagado"}</Btn>
-                    ):(
-                      <Pill text="Gratuita" color={C.gris} bg="#eee"/>
-                    )}
+                      ):(
+                        <Btn small outline onClick={()=>confirmarPlaza(i)}>✅ Confirmar plaza</Btn>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -1542,14 +1599,16 @@ function Noticias({noticias,setNoticias,socios}){
 // ══════════════════════════════════════════════════════════
 // ACTAS
 // ══════════════════════════════════════════════════════════
-function Actas({actas,setActas}){
+function Actas({actas,setActas,socios}){
   const [modal,setModal]=useState(false);
   const [subiendo,setSubiendo]=useState(false);
-  const [form,setForm]=useState({titulo:"",fecha:hoy,resumen:""});
+  const [form,setForm]=useState({titulo:"",fecha:hoy,resumen:"",enviarEmail:false});
   const [archivo,setArchivo]=useState(null);
   const [notif,setNotif]=useState(null);
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
-  const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
+  const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),4000);};
+
+  const destinatarios = destinatariosMayores14(socios);
 
   const guardar=async()=>{
     if(!form.titulo||!form.fecha) return;
@@ -1562,14 +1621,21 @@ function Actas({actas,setActas}){
       const {data:firmada}=await supabase.storage.from("actas").createSignedUrl(nombreArchivo,60*60*24*365*2); // 2 años
       pdf_url=firmada?.signedUrl||null; pdf_path=nombreArchivo;
     }
-    const {data,error}=await supabase.from("actas").insert([{...form,pdf_url,pdf_path}]).select();
+    const {enviarEmail,...datosActa}=form;
+    let enviados=0;
+    if(enviarEmail && destinatarios.length>0){
+      const enlace = pdf_url ? `\n\nPDF del acta:\n${pdf_url}` : "";
+      enviados = await enviarEmailMasivo(destinatarios, `La Rana Mecánica · Nueva acta: ${form.titulo}`,
+        (s)=>`Hola ${s.nombre},\n\nSe ha publicado una nueva acta:\n\n📜 ${form.titulo} (${fmtFecha(form.fecha)})\n${form.resumen?"\n"+form.resumen+"\n":""}${enlace}\n\nPuedes consultarla en Mi Zona:\nhttps://reylagarto90.github.io/rana-mecanica/#/mi-zona\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`);
+    }
+    const {data,error}=await supabase.from("actas").insert([{...datosActa,pdf_url,pdf_path}]).select();
     setSubiendo(false);
     if(error){ok("❌ Error al guardar el acta");return;}
     setActas(p=>[...data,...p]);
     setModal(false);
-    setForm({titulo:"",fecha:hoy,resumen:""});
+    setForm({titulo:"",fecha:hoy,resumen:"",enviarEmail:false});
     setArchivo(null);
-    ok("✅ Acta publicada");
+    ok(`✅ Acta publicada${enviarEmail?` · email enviado a ${enviados}/${destinatarios.length}`:""}`);
   };
 
   const eliminar=async(a)=>{
@@ -1618,11 +1684,110 @@ function Actas({actas,setActas}){
         <input type="file" accept="application/pdf" onChange={e=>setArchivo(e.target.files?.[0]||null)}
           style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
       </div>
+      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",marginBottom:16,padding:"10px 12px",borderRadius:8,background:form.enviarEmail?C.verdeLight:C.grisLight}}>
+        <input type="checkbox" checked={form.enviarEmail} onChange={e=>setF("enviarEmail",e.target.checked)} style={{accentColor:C.verde}}/>
+        Avisar por email a {destinatarios.length} peñistas (14+ años, con consentimiento)
+      </label>
       <div style={{display:"flex",gap:10}}>
         <Btn outline onClick={()=>setModal(false)} style={{flex:1}}>Cancelar</Btn>
         <Btn onClick={guardar} style={{flex:1}} disabled={subiendo}>{subiendo?"Publicando...":"Publicar acta"}</Btn>
       </div>
     </Modal>
+  </div>);
+}
+
+// ══════════════════════════════════════════════════════════
+// AUDITORÍA
+// ══════════════════════════════════════════════════════════
+function Auditoria(){
+  const [registros,setRegistros]=useState([]);
+  const [cargando,setCargando]=useState(true);
+  const [filtroTabla,setFiltroTabla]=useState("todas");
+  const [filtroOp,setFiltroOp]=useState("todas");
+  const [expandido,setExpandido]=useState(null);
+
+  useEffect(()=>{
+    (async()=>{
+      setCargando(true);
+      const {data}=await supabase.from("auditoria").select("*").order("created_at",{ascending:false}).limit(500);
+      setRegistros(data||[]);
+      setCargando(false);
+    })();
+  },[]);
+
+  const tablasDisponibles=[...new Set(registros.map(r=>r.tabla))].sort();
+
+  const filtrados=registros.filter(r=>{
+    if(filtroTabla!=="todas"&&r.tabla!==filtroTabla) return false;
+    if(filtroOp!=="todas"&&r.operacion!==filtroOp) return false;
+    return true;
+  });
+
+  const opIcon={INSERT:"➕",UPDATE:"✏️",DELETE:"🗑️"};
+  const opColor={INSERT:C.verde,UPDATE:C.azul,DELETE:C.rojo};
+
+  return(<div>
+    <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark,marginBottom:6}}>🔍 Auditoría</h2>
+    <p style={{fontSize:12,color:C.muted,marginBottom:18}}>Registro automático de todos los cambios en la base de datos (últimos 500). Las acciones hechas sin sesión (ej. un peñista apuntándose por teléfono) no llevan email asociado.</p>
+
+    <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+      <select value={filtroTabla} onChange={e=>setFiltroTabla(e.target.value)}
+        style={{padding:"8px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,fontFamily:"inherit",background:C.blanco}}>
+        <option value="todas">Todas las tablas</option>
+        {tablasDisponibles.map(t=><option key={t} value={t}>{t}</option>)}
+      </select>
+      <select value={filtroOp} onChange={e=>setFiltroOp(e.target.value)}
+        style={{padding:"8px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,fontFamily:"inherit",background:C.blanco}}>
+        <option value="todas">Todas las acciones</option>
+        <option value="INSERT">➕ Creaciones</option>
+        <option value="UPDATE">✏️ Ediciones</option>
+        <option value="DELETE">🗑️ Borrados</option>
+      </select>
+    </div>
+
+    {cargando?(
+      <p style={{color:C.muted,fontSize:13}}>Cargando...</p>
+    ):(
+      <Card style={{padding:0}}>
+        <div style={{overflowX:"auto"}}>
+          <table style={{width:"100%",borderCollapse:"collapse"}}>
+            <thead><tr>{["Fecha","Tabla","Acción","Quién",""].map(h=><TH key={h}>{h}</TH>)}</tr></thead>
+            <tbody>
+              {filtrados.map(r=>(
+                <Fragment key={r.id}>
+                  <tr onClick={()=>setExpandido(expandido===r.id?null:r.id)} style={{cursor:"pointer"}}>
+                    <TD style={{fontSize:12,color:C.muted,whiteSpace:"nowrap"}}>{new Date(r.created_at).toLocaleString("es-ES")}</TD>
+                    <TD style={{fontWeight:600,fontSize:12}}>{r.tabla}</TD>
+                    <TD><Pill text={`${opIcon[r.operacion]||""} ${r.operacion}`} color={opColor[r.operacion]||C.gris} bg={C.grisLight}/></TD>
+                    <TD style={{fontSize:12}}>{r.usuario_email||<span style={{color:C.muted,fontStyle:"italic"}}>sin sesión</span>}</TD>
+                    <TD style={{fontSize:11,color:C.azul}}>{expandido===r.id?"▲ ocultar":"▼ ver datos"}</TD>
+                  </tr>
+                  {expandido===r.id&&(
+                    <tr>
+                      <td colSpan={5} style={{padding:"10px 16px",background:C.grisLight}}>
+                        {r.datos_anteriores&&(
+                          <div style={{marginBottom:8}}>
+                            <div style={{fontSize:11,fontWeight:700,color:C.rojo,marginBottom:4}}>ANTES</div>
+                            <pre style={{fontSize:11,whiteSpace:"pre-wrap",wordBreak:"break-all",background:C.blanco,padding:8,borderRadius:6,margin:0}}>{JSON.stringify(r.datos_anteriores,null,2)}</pre>
+                          </div>
+                        )}
+                        {r.datos_nuevos&&(
+                          <div>
+                            <div style={{fontSize:11,fontWeight:700,color:C.verde,marginBottom:4}}>DESPUÉS</div>
+                            <pre style={{fontSize:11,whiteSpace:"pre-wrap",wordBreak:"break-all",background:C.blanco,padding:8,borderRadius:6,margin:0}}>{JSON.stringify(r.datos_nuevos,null,2)}</pre>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {filtrados.length===0&&<p style={{padding:16,color:C.muted,fontSize:13}}>Sin registros para este filtro.</p>}
+      </Card>
+    )}
   </div>);
 }
 
@@ -1633,7 +1798,7 @@ function Tesoreria({ejercicios,setEjercicios,movimientos,setMovimientos}){
   const [ejId,setEjId]=useState(ejercicios[ejercicios.length-1]?.id);
   const [modal,setModal]=useState(null);
   const [modalNuevoEj,setModalNuevoEj]=useState(false);
-  const [form,setForm]=useState({tipo:"ingreso",concepto:"",categoria:"Cuotas socios",importe:"",fecha:hoy});
+  const [form,setForm]=useState({tipo:"ingreso",concepto:"",categoria:"Cuotas socios",importe:"",fecha:hoy,observaciones:""});
   const [formNuevoEj,setFormNuevoEj]=useState({nombre:"",ejercicioBaseId:"",incluirRemanente:true});
   const [notif,setNotif]=useState(null);
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
@@ -1763,6 +1928,7 @@ function Tesoreria({ejercicios,setEjercicios,movimientos,setMovimientos}){
               <div>
                 <div style={{fontSize:13,fontWeight:600}}>{m.concepto}</div>
                 <div style={{fontSize:10,color:C.muted}}>{m.categoria}</div>
+                {m.observaciones&&<div style={{fontSize:11,color:C.gris,marginTop:3,fontStyle:"italic"}}>📝 {m.observaciones}</div>}
               </div>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontWeight:700,color,fontSize:14}}>{fmt(m.importe)}</span>
@@ -1785,6 +1951,12 @@ function Tesoreria({ejercicios,setEjercicios,movimientos,setMovimientos}){
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px"}}>
         <Input label="Importe (€)" value={form.importe} onChange={v=>setF("importe",v)} type="number" required/>
         <Input label="Fecha" value={form.fecha} onChange={v=>setF("fecha",v)} type="date"/>
+      </div>
+      <div style={{marginBottom:16}}>
+        <label style={{fontSize:13,fontWeight:600,color:C.gris,display:"block",marginBottom:6}}>Observaciones (opcional)</label>
+        <textarea value={form.observaciones} onChange={e=>setF("observaciones",e.target.value)} rows={2}
+          placeholder="Detalles adicionales sobre este movimiento..."
+          style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>
       </div>
       <div style={{display:"flex",gap:10}}>
         <Btn outline onClick={()=>setModal(null)} style={{flex:1}}>Cancelar</Btn>
@@ -1821,6 +1993,91 @@ function Tesoreria({ejercicios,setEjercicios,movimientos,setMovimientos}){
 }
 
 // ══════════════════════════════════════════════════════════
+// BACKUP COMPLETO
+// ══════════════════════════════════════════════════════════
+let _jsZipPromise = null;
+const cargarJSZip = () => {
+  if (window.JSZip) return Promise.resolve(window.JSZip);
+  if (_jsZipPromise) return _jsZipPromise;
+  _jsZipPromise = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+    s.onload = () => resolve(window.JSZip);
+    s.onerror = () => reject(new Error("No se pudo cargar JSZip"));
+    document.head.appendChild(s);
+  });
+  return _jsZipPromise;
+};
+
+const TABLAS_BACKUP = ["socios","cuotas","loteria","actividades","inscripciones","verificaciones","solicitudes_alta","ejercicios","movimientos_ejercicio","tarifas","actas","noticias"];
+const BUCKETS_BACKUP = ["fichas","actas","noticias"];
+
+function SeccionBackup(){
+  const [generando,setGenerando]=useState(false);
+  const [progreso,setProgreso]=useState("");
+
+  const generarBackup=async()=>{
+    setGenerando(true);
+    try{
+      const JSZip=await cargarJSZip();
+      const zip=new JSZip();
+
+      // 1. Todas las tablas de la base de datos
+      for(const tabla of TABLAS_BACKUP){
+        setProgreso(`Exportando tabla ${tabla}...`);
+        const {data,error}=await supabase.from(tabla).select("*");
+        zip.file(`base_de_datos/${tabla}.json`, JSON.stringify(error?{error:error.message}:data, null, 2));
+      }
+
+      // 2. Archivos guardados en Storage (fichas, actas, noticias)
+      for(const bucket of BUCKETS_BACKUP){
+        setProgreso(`Listando archivos de ${bucket}...`);
+        const {data:archivos,error:errList}=await supabase.storage.from(bucket).list();
+        if(errList||!archivos) continue;
+        for(const archivo of archivos){
+          if(archivo.id===null) continue; // carpetas
+          setProgreso(`Descargando ${bucket}/${archivo.name}...`);
+          const {data:blob,error:errDown}=await supabase.storage.from(bucket).download(archivo.name);
+          if(!errDown&&blob) zip.file(`storage/${bucket}/${archivo.name}`, blob);
+        }
+      }
+
+      // 3. Manifiesto
+      zip.file("manifiesto.json", JSON.stringify({
+        generado_el: new Date().toISOString(),
+        temporada: TEMPORADA_ACTUAL,
+        tablas: TABLAS_BACKUP,
+        buckets: BUCKETS_BACKUP,
+      }, null, 2));
+
+      setProgreso("Comprimiendo...");
+      const contenido=await zip.generateAsync({type:"blob"});
+      const url=URL.createObjectURL(contenido);
+      const a=document.createElement("a");
+      a.href=url;
+      a.download=`backup_rana_mecanica_${hoy}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }catch(e){
+      console.error("Error generando backup:",e);
+      alert("No se ha podido generar el backup. Revisa la consola para más detalles.");
+    }
+    setGenerando(false);
+    setProgreso("");
+  };
+
+  return(
+    <Card style={{marginBottom:24,borderLeft:`4px solid ${C.granate}`}}>
+      <h3 style={{fontSize:15,fontWeight:700,color:C.granateDark,marginBottom:8}}>📦 Copia de seguridad completa</h3>
+      <p style={{fontSize:13,color:C.gris,marginBottom:14}}>Descarga un .zip con todas las tablas (socios, cuotas, lotería, actividades...) y todos los documentos guardados (fichas, actas, adjuntos de noticias). Recomendado hacerlo al menos una vez al mes.</p>
+      <Btn onClick={generarBackup} disabled={generando}>{generando?`⏳ ${progreso||"Generando..."}`:"📦 Descargar backup completo"}</Btn>
+    </Card>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
 // CONFIGURACIÓN
 // ══════════════════════════════════════════════════════════
 function Configuracion({tarifas,setTarifas}){
@@ -1840,7 +2097,11 @@ function Configuracion({tarifas,setTarifas}){
 
   return(<div>
     {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.verde,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14}}>{notif}</div>}
-    <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark,marginBottom:20}}>⚙️ Configuración de tarifas</h2>
+    <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark,marginBottom:20}}>⚙️ Configuración</h2>
+
+    <SeccionBackup/>
+
+    <h3 style={{fontSize:16,fontWeight:700,color:C.granateDark,marginBottom:16}}>Tarifas</h3>
     <div style={{display:"flex",flexDirection:"column",gap:14,marginBottom:24}}>
       {editadas.map(t=>(
         <Card key={t.id} style={{borderLeft:`5px solid ${t.aprobado?C.verde:C.oro}`}}>
@@ -1959,10 +2220,11 @@ export default function Junta(){
       case "consentimientos": return <Consentimientos socios={socios} setSocios={setSocios}/>;
       case "solicitudes":   return <Solicitudes solicitudes={solicitudes} setSolicitudes={setSolicitudes} socios={socios} setSocios={setSocios} setCuotas={setCuotas}/>;
       case "verificaciones":return <Verificaciones verificaciones={verificaciones} setVerificaciones={setVerificaciones} socios={socios} setSocios={setSocios}/>;
-      case "cuotas":        return <Cuotas socios={socios} cuotas={cuotas} setCuotas={setCuotas} ejercicios={ejercicios} setMovimientos={setMovimientos}/>;
+      case "cuotas":        return <Cuotas socios={socios} cuotas={cuotas} setCuotas={setCuotas} ejercicios={ejercicios} setMovimientos={setMovimientos} tarifas={tarifas}/>;
       case "loteria":       return <Loteria socios={socios} loteria={loteria} setLoteria={setLoteria} ejercicios={ejercicios} setMovimientos={setMovimientos}/>;
       case "actividades":   return <Actividades socios={socios} actividades={actividades} setActividades={setActividades} inscripciones={inscripciones} setInscripciones={setInscripciones} ejercicios={ejercicios} setMovimientos={setMovimientos}/>;
-      case "actas":         return <Actas actas={actas} setActas={setActas}/>;
+      case "actas":         return <Actas actas={actas} setActas={setActas} socios={socios}/>;
+      case "auditoria":     return <Auditoria/>;
       case "noticias":      return <Noticias noticias={noticias} setNoticias={setNoticias} socios={socios}/>;
       case "tesoreria":     return <Tesoreria ejercicios={ejercicios} setEjercicios={setEjercicios} movimientos={movimientos} setMovimientos={setMovimientos}/>;
       case "configuracion": return <Configuracion tarifas={tarifas} setTarifas={setTarifas}/>;
