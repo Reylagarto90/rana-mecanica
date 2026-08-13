@@ -409,7 +409,7 @@ function Peñistas({socios,setSocios,cuotas,setCuotas}){
     const ws=XLSX.utils.json_to_sheet(data);
     ws["!cols"]=[{wch:10},{wch:14},{wch:22},{wch:12},{wch:13},{wch:28},{wch:12},{wch:10},{wch:16},{wch:8},{wch:12},{wch:6},{wch:10}];
     const wb=XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb,`Censo ${TEMPORADA_ACTUAL}`,"Socios");
+    XLSX.utils.book_append_sheet(wb,ws,`Censo ${TEMPORADA_ACTUAL}`.replace(/[\\/:*?[\]]/g,"-"));
     XLSX.writeFile(wb,`censo_rana_mecanica_${hoy}.xlsx`);
   };
 
