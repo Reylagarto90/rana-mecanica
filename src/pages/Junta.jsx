@@ -2141,6 +2141,20 @@ function Configuracion({tarifas,setTarifas}){
   </div>);
 }
 
+// Fusiona un cambio en vivo (Realtime) dentro del estado local por id,
+// evitando duplicados cuando el propio cliente ya había insertado la fila.
+const mergeChange = (setState, payload) => {
+  setState(prev=>{
+    if(payload.eventType==="INSERT"){
+      if(prev.some(r=>r.id===payload.new.id)) return prev;
+      return [...prev, payload.new];
+    }
+    if(payload.eventType==="UPDATE") return prev.map(r=>r.id===payload.new.id?payload.new:r);
+    if(payload.eventType==="DELETE") return prev.filter(r=>r.id!==payload.old.id);
+    return prev;
+  });
+};
+
 // ══════════════════════════════════════════════════════════
 // APP PRINCIPAL
 // ══════════════════════════════════════════════════════════
@@ -2192,6 +2206,27 @@ export default function Junta(){
       setLoading(false);
     };
     cargar();
+  },[]);
+
+  // Actualizaciones en vivo: cualquier cambio hecho por otro miembro de la
+  // junta (u otro dispositivo tuyo) se refleja al instante, sin recargar.
+  const [enVivo,setEnVivo]=useState(false);
+  useEffect(()=>{
+    const canal = supabase.channel("junta_realtime")
+      .on("postgres_changes",{event:"*",schema:"public",table:"socios"}, p=>mergeChange(setSocios,p))
+      .on("postgres_changes",{event:"*",schema:"public",table:"cuotas"}, p=>mergeChange(setCuotas,p))
+      .on("postgres_changes",{event:"*",schema:"public",table:"loteria"}, p=>mergeChange(setLoteria,p))
+      .on("postgres_changes",{event:"*",schema:"public",table:"actividades"}, p=>mergeChange(setActividades,p))
+      .on("postgres_changes",{event:"*",schema:"public",table:"inscripciones"}, p=>mergeChange(setInscripciones,p))
+      .on("postgres_changes",{event:"*",schema:"public",table:"verificaciones"}, p=>mergeChange(setVerificaciones,p))
+      .on("postgres_changes",{event:"*",schema:"public",table:"solicitudes_alta"}, p=>mergeChange(setSolicitudes,p))
+      .on("postgres_changes",{event:"*",schema:"public",table:"ejercicios"}, p=>mergeChange(setEjercicios,p))
+      .on("postgres_changes",{event:"*",schema:"public",table:"movimientos_ejercicio"}, p=>mergeChange(setMovimientos,p))
+      .on("postgres_changes",{event:"*",schema:"public",table:"tarifas"}, p=>mergeChange(setTarifas,p))
+      .on("postgres_changes",{event:"*",schema:"public",table:"actas"}, p=>mergeChange(setActas,p))
+      .on("postgres_changes",{event:"*",schema:"public",table:"noticias"}, p=>mergeChange(setNoticias,p))
+      .subscribe(status=>setEnVivo(status==="SUBSCRIBED"));
+    return ()=>{ supabase.removeChannel(canal); };
   },[]);
 
   // Badges alertas
@@ -2254,6 +2289,10 @@ export default function Junta(){
           })}
         </nav>
         <div style={{padding:"12px 14px",borderTop:"1px solid rgba(255,255,255,0.1)"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginBottom:10,fontSize:11,color:enVivo?"#8fe0a8":"rgba(255,255,255,0.4)"}}>
+            <span style={{width:7,height:7,borderRadius:"50%",background:enVivo?"#2ecc71":"#888",display:"inline-block"}}/>
+            {enVivo?"En vivo":"Conectando..."}
+          </div>
           <button onClick={()=>{ sessionStorage.removeItem("junta_auth"); window.location.hash="#/junta/login"; window.location.reload(); }}
             style={{width:"100%",padding:"9px 12px",marginBottom:10,background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:8,cursor:"pointer",color:C.blanco,fontSize:13,fontWeight:600,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
             🚪 Cerrar sesión
