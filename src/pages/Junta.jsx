@@ -147,7 +147,9 @@ function Dashboard({socios,cuotas,actividades,solicitudes,verificaciones,setTab}
   const pendiente = cuotas.filter(c=>!c.pagado).reduce((a,c)=>a+Number(c.importe),0);
   const solPend = solicitudes.filter(s=>s.estado==="pendiente");
   const verPend = verificaciones.filter(v=>v.estado==="pendiente");
-  const morosos = activos.filter(s=>cuotas.some(c=>c.socio_id===s.id&&!c.pagado&&c.temporada===TEMPORADA_ACTUAL));
+  // "Al corriente" = tiene una cuota de esta temporada marcada como pagada.
+  // Cualquier otro activo (sin cuota creada, o con cuota impagada) cuenta como pendiente/moroso.
+  const morosos = activos.filter(s=>!cuotas.some(c=>c.socio_id===s.id&&c.temporada===TEMPORADA_ACTUAL&&c.pagado));
   const municipios = {};
   activos.forEach(s=>{ if(s.municipio) municipios[s.municipio]=(municipios[s.municipio]||0)+1; });
 
@@ -199,12 +201,13 @@ function Dashboard({socios,cuotas,actividades,solicitudes,verificaciones,setTab}
         <h3 style={{fontSize:15,fontWeight:700,color:C.granateDark,marginBottom:14}}>⚠️ Cuotas pendientes</h3>
         {morosos.length===0?<p style={{color:C.verde,fontSize:13}}>✅ Todos al corriente</p>
         :morosos.slice(0,6).map(s=>{
-          const imp=cuotas.filter(c=>c.socio_id===s.id&&!c.pagado).reduce((a,c)=>a+Number(c.importe),0);
+          const cuotaSocio=cuotas.find(c=>c.socio_id===s.id&&c.temporada===TEMPORADA_ACTUAL);
           return <div key={s.id} style={{display:"flex",justifyContent:"space-between",padding:"7px 0",borderBottom:`1px solid ${C.border}`,fontSize:13}}>
             <span>{s.nombre} {s.apellidos}</span>
-            <span style={{fontWeight:700,color:C.oro}}>{fmt(imp)}</span>
+            <span style={{fontWeight:700,color:C.oro}}>{cuotaSocio?fmt(cuotaSocio.importe):"Sin cuota registrada"}</span>
           </div>;
         })}
+        {morosos.length>6&&<div style={{fontSize:12,color:C.muted,marginTop:8,textAlign:"right"}}>+{morosos.length-6} más</div>}
       </Card>
       <Card>
         <h3 style={{fontSize:15,fontWeight:700,color:C.granateDark,marginBottom:14}}>📍 Municipios</h3>
@@ -975,7 +978,7 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
     <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}>
       <KPI label="Cobrado" value={fmt(cobradas)} color={C.verde} icon="✅"/>
       <KPI label="Pendiente" value={fmt(pendiente)} color={C.oro} icon="⏳"/>
-      <KPI label="Morosos" value={cuotas.filter(c=>!c.pagado&&c.temporada===TEMPORADA_ACTUAL).length} color={C.rojo} icon="⚠️"/>
+      <KPI label="Morosos" value={socios.filter(s=>s.estado==="activo").filter(s=>!cuotas.some(c=>c.socio_id===s.id&&c.temporada===TEMPORADA_ACTUAL&&c.pagado)).length} color={C.rojo} icon="⚠️"/>
     </div>
     <div style={{display:"flex",gap:8,marginBottom:14}}>
       {["todos","pagadas","pendientes"].map(f=>(
