@@ -397,6 +397,24 @@ function Peñistas({socios,setSocios,cuotas,setCuotas}){
     ok(`${s.nombre} dado de baja`);
   };
 
+  const reactivar=async(s)=>{
+    await supabase.from("socios").update({estado:"activo",fecha_baja:null}).eq("id",s.id);
+    setSocios(p=>p.map(x=>x.id===s.id?{...x,estado:"activo",fecha_baja:null}:x));
+    ok(`${s.nombre} reactivado`);
+  };
+
+  const eliminarSocio=async(s)=>{
+    const confirmacion=prompt(`Vas a ELIMINAR PERMANENTEMENTE todos los datos de ${s.nombre} ${s.apellidos} (${s.numero}). Esta acción no se puede deshacer y borrará también sus cuotas, lotería e inscripciones.\n\nEscribe ELIMINAR para confirmar:`);
+    if(confirmacion!=="ELIMINAR") return;
+    await supabase.from("inscripciones").delete().eq("socio_id",s.id);
+    await supabase.from("loteria").delete().eq("socio_id",s.id);
+    await supabase.from("cuotas").delete().eq("socio_id",s.id);
+    const {error}=await supabase.from("socios").delete().eq("id",s.id);
+    if(error){ok("❌ Error al eliminar");return;}
+    setSocios(p=>p.filter(x=>x.id!==s.id));
+    ok(`🗑️ ${s.nombre} eliminado permanentemente`);
+  };
+
   const exportarExcel=()=>{
     const data=socios.filter(s=>s.estado==="activo").map(s=>({
       "Nº Socio":s.numero,"Nombre":s.nombre,"Apellidos":s.apellidos,
@@ -446,9 +464,11 @@ function Peñistas({socios,setSocios,cuotas,setCuotas}){
                 <TD>{s.tiene_acciones?<Pill text={`📈 ${s.num_acciones||1}`} color={C.azul} bg={C.azulLight}/>:<Pill text="No" color={C.gris} bg={C.grisLight}/>}</TD>
                 <TD>{s.rgpd?<Pill text="✅" color={C.verde} bg={C.verdeLight}/>:<Pill text="❌" color={C.rojo} bg={C.rojoLight}/>}</TD>
                 <TD>{s.estado==="activo"?<Pill text="● Activo" color={C.verde} bg={C.verdeLight}/>:<Pill text="● Baja" color={C.rojo} bg={C.rojoLight}/>}</TD>
-                <TD><div style={{display:"flex",gap:6}}>
+                <TD><div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                   <Btn small outline onClick={()=>abrirEditar(s)}>✏️</Btn>
                   {s.estado==="activo"&&<Btn small outline color={C.rojo} onClick={()=>darBaja(s)}>Baja</Btn>}
+                  {s.estado==="baja"&&<Btn small outline color={C.verde} onClick={()=>reactivar(s)}>Reactivar</Btn>}
+                  <Btn small outline color={C.rojo} onClick={()=>eliminarSocio(s)}>🗑️</Btn>
                 </div></TD>
               </tr>
             ))}
