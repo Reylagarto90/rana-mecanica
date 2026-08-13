@@ -1268,6 +1268,8 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
         ].filter(Boolean).join(" · ");
         const enviados=await enviarEmailMasivo(destinatarios, `La Rana Mecánica · Nueva actividad: ${form.nombre}`,
           (s)=>`Hola ${s.nombre},\n\nSe ha publicado una nueva actividad en la peña:\n\n🐸 ${form.nombre}\n${detalles}\n${form.descripcion?"\n"+form.descripcion+"\n":""}\nPuedes apuntarte desde Mi Zona:\nhttps://reylagarto90.github.io/rana-mecanica/#/mi-zona\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`);
+        await supabase.from("actividades").update({aviso_enviados:enviados,aviso_total:destinatarios.length}).eq("id",data[0].id);
+        setActividades(p=>p.map(a=>a.id===data[0].id?{...a,aviso_enviados:enviados,aviso_total:destinatarios.length}:a));
         setEnviandoAviso(false);
         ok(`✅ Actividad creada · aviso enviado a ${enviados}/${destinatarios.length} peñistas`);
         setModal(false); setEditando(null);
@@ -1350,6 +1352,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
           <p style={{fontSize:12,color:C.muted,marginBottom:8}}>{a.fecha_texto||fmtFecha(a.fecha)}</p>
           {a.descripcion&&<p style={{fontSize:12,color:C.gris,marginBottom:8,fontStyle:"italic"}}>{a.descripcion}</p>}
           {a.precio_socio>0&&<div style={{fontSize:12,color:C.gris,marginBottom:8}}>💶 {fmt(a.precio_socio)}/persona · 🏟️ {a.plazas} plazas</div>}
+          {a.aviso_total!=null&&<div style={{fontSize:11,color:C.muted,marginBottom:8}}>📧 aviso enviado a {a.aviso_enviados}/{a.aviso_total}</div>}
           <button onClick={()=>setVerInscritos(a)} style={{width:"100%",padding:"8px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:C.text,marginBottom:8}}>
             👥 {inscritos.length} apuntados{a.precio_socio>0?` · ${pagados} pagado${pagados===1?"":"s"}`:""}
           </button>
@@ -1459,7 +1462,7 @@ function Noticias({noticias,setNoticias,socios}){
 
     const {data,error}=await supabase.from("noticias").insert([{
       titulo:form.titulo, cuerpo:form.cuerpo, adjunto_url, adjunto_path, adjunto_nombre,
-      enviado_email:form.enviarEmail, destinatarios_count:enviados,
+      enviado_email:form.enviarEmail, destinatarios_count:enviados, total_destinatarios:destinatarios.length,
     }]).select();
     setPublicando(false);
     if(error){ok("❌ Error al publicar");return;}
@@ -1495,7 +1498,7 @@ function Noticias({noticias,setNoticias,socios}){
               <div style={{fontWeight:700,fontSize:15,color:C.text}}>{n.titulo}</div>
               <div style={{fontSize:11,color:C.muted,marginTop:2}}>
                 {new Date(n.created_at).toLocaleDateString("es-ES")}
-                {n.enviado_email&&<> · 📧 enviado a {n.destinatarios_count}</>}
+                {n.enviado_email&&<> · 📧 enviados {n.destinatarios_count}/{n.total_destinatarios||n.destinatarios_count}</>}
               </div>
               <p style={{fontSize:13,color:C.gris,marginTop:8,whiteSpace:"pre-wrap"}}>{n.cuerpo}</p>
               {n.adjunto_url&&<a href={n.adjunto_url} target="_blank" rel="noreferrer" style={{display:"inline-block",marginTop:8,padding:"6px 12px",background:C.grisLight,borderRadius:8,fontSize:12,fontWeight:600,color:C.text,textDecoration:"none"}}>📎 {n.adjunto_nombre||"Ver adjunto"}</a>}
