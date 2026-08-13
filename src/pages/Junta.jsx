@@ -873,45 +873,51 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos}){
   const cobradas=cuotas.filter(c=>c.pagado).reduce((a,c)=>a+Number(c.importe),0);
   const pendiente=cuotas.filter(c=>!c.pagado).reduce((a,c)=>a+Number(c.importe),0);
 
+  const [procesando,setProcesando]=useState(null);
+
+  // Reutilizable: crea el ingreso en Tesorería para una cuota pagada. Devuelve el id del movimiento o null.
+  const crearIngresoCuota=async(c)=>{
+    if(!c || Number(c.importe)<=0) return null;
+    const socio=getSocio(c.socio_id);
+    const ejercicioCuota=ejercicios.find(e=>e.nombre===c.temporada)||ejercicios.find(e=>e.nombre===TEMPORADA_ACTUAL)||ejercicios[ejercicios.length-1];
+    if(!ejercicioCuota){ console.warn("No se encontró ejercicio para vincular el ingreso de la cuota", c); return null; }
+    const mov={
+      tipo:"ingreso",
+      concepto:`Cuota ${c.temporada}${socio?` · ${socio.nombre} ${socio.apellidos}`:""}`,
+      categoria:"Cuotas socios",
+      importe:Number(c.importe), fecha:hoy, ejercicio_id:ejercicioCuota.id,
+    };
+    const {data:movData,error:errMov}=await supabase.from("movimientos_ejercicio").insert([mov]).select();
+    if(errMov){ console.error("Error creando ingreso en Tesorería:",errMov); return null; }
+    if(movData?.[0]){ setMovimientos(prev=>[...prev,...movData]); return movData[0].id; }
+    return null;
+  };
+
   const guardar=async()=>{
     if(!form.socio_id) return;
     const {data,error}=await supabase.from("cuotas").insert([{
       ...form, socio_id:Number(form.socio_id), importe:Number(form.importe)||0,
-      fecha_pago:form.pagado?form.fecha_pago:null,
+      fecha_pago:form.pagado?form.fecha_pago||hoy:null,
     }]).select();
     if(error){ok("❌ Error");return;}
-    setCuotas(p=>[...p,...data]);
+    let cuotaFinal=data[0];
+    if(cuotaFinal.pagado){
+      const movimientoId=await crearIngresoCuota(cuotaFinal);
+      if(movimientoId){
+        await supabase.from("cuotas").update({movimiento_id:movimientoId}).eq("id",cuotaFinal.id);
+        cuotaFinal={...cuotaFinal,movimiento_id:movimientoId};
+      }
+    }
+    setCuotas(p=>[...p,cuotaFinal]);
     setModal(false);
-    ok("✅ Cuota registrada");
+    ok(cuotaFinal.pagado?(cuotaFinal.movimiento_id?"✅ Cuota registrada · ingreso añadido a Tesorería":"✅ Cuota registrada (revisa Tesorería, no se pudo vincular el ingreso)"):"✅ Cuota registrada");
   };
-
-  const [procesando,setProcesando]=useState(null);
 
   const marcarPagado=async(id)=>{
     if(procesando) return;
     setProcesando(id);
     const c=cuotas.find(x=>x.id===id);
-
-    // Ingreso automático en Tesorería del ejercicio correspondiente a la temporada de la cuota
-    let movimientoId=null;
-    if(c && Number(c.importe)>0){
-      const socio=getSocio(c.socio_id);
-      const ejercicioCuota=ejercicios.find(e=>e.nombre===c.temporada)||ejercicios.find(e=>e.nombre===TEMPORADA_ACTUAL)||ejercicios[ejercicios.length-1];
-      if(ejercicioCuota){
-        const mov={
-          tipo:"ingreso",
-          concepto:`Cuota ${c.temporada}${socio?` · ${socio.nombre} ${socio.apellidos}`:""}`,
-          categoria:"Cuotas socios",
-          importe:Number(c.importe), fecha:hoy, ejercicio_id:ejercicioCuota.id,
-        };
-        const {data:movData,error:errMov}=await supabase.from("movimientos_ejercicio").insert([mov]).select();
-        if(errMov) console.error("Error creando ingreso en Tesorería:",errMov);
-        if(movData?.[0]){ movimientoId=movData[0].id; setMovimientos(prev=>[...prev,...movData]); }
-      } else {
-        console.warn("No se encontró ejercicio para vincular el ingreso de la cuota", c);
-      }
-    }
-
+    const movimientoId=await crearIngresoCuota(c);
     await supabase.from("cuotas").update({pagado:true,fecha_pago:hoy,movimiento_id:movimientoId}).eq("id",id);
     setCuotas(p=>p.map(x=>x.id===id?{...x,pagado:true,fecha_pago:hoy,movimiento_id:movimientoId}:x));
     setProcesando(null);
