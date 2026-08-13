@@ -19,6 +19,59 @@ const TEMPORADA_ACTUAL = "2026/2027";
 const TEMPORADA_ANTERIOR = "2025/2026";
 const hoy = new Date().toISOString().split("T")[0];
 
+// ── EmailJS (mismo servicio usado en Verificar.jsx / Alta.jsx) ──────
+const EMAILJS_SERVICE_ID  = "service_g9n6e5c";
+const EMAILJS_TEMPLATE_ID = "template_0rjj2y8";
+const EMAILJS_PUBLIC_KEY  = "IvxWWpgwA15GDRGyF";
+
+const enviarEmailJS = async (destinatario, asunto, mensaje) => {
+  try{
+    const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        service_id: EMAILJS_SERVICE_ID, template_id: EMAILJS_TEMPLATE_ID, user_id: EMAILJS_PUBLIC_KEY,
+        template_params: { to_email: destinatario, subject: asunto, message: mensaje, name: "La Rana Mecánica", reply_to: "penyaranamecanica@gmail.com" },
+      }),
+    });
+    if(!res.ok){ const txt = await res.text(); console.error("EmailJS error:", res.status, txt); return false; }
+    return true;
+  }catch(e){ console.error("Error enviando email:", e); return false; }
+};
+
+// Edad calculada a partir de fecha_nac; si no hay fecha, se asume adulto si tipo==="adulto"
+const calcularEdad = (fechaNac) => {
+  if(!fechaNac) return null;
+  const nac = new Date(fechaNac);
+  const ahora = new Date();
+  let edad = ahora.getFullYear() - nac.getFullYear();
+  const m = ahora.getMonth() - nac.getMonth();
+  if(m < 0 || (m === 0 && ahora.getDate() < nac.getDate())) edad--;
+  return edad;
+};
+
+// Socios activos, con email, de 14 años o más (o adultos sin fecha de nacimiento registrada)
+// Destinatarios de comunicaciones masivas: activos, con email, con el consentimiento
+// de "Comunicaciones promocionales peña" otorgado, y de 14 años o más
+const destinatariosMayores14 = (socios) => socios.filter(s=>{
+  if(s.estado!=="activo" || !s.email) return false;
+  if(!s.consent_promo_pena) return false; // sin este consentimiento, no se le envía nada masivo
+  const edad = calcularEdad(s.fecha_nac);
+  if(edad!=null) return edad>=14;
+  return s.tipo==="adulto"; // sin fecha de nacimiento: solo se envía si consta como adulto
+});
+
+// Envía a una lista de socios con una pequeña pausa entre envíos (evita saturar EmailJS)
+const enviarEmailMasivo = async (socios, asunto, mensajeFn) => {
+  let enviados=0;
+  for(const s of socios){
+    const ok = await enviarEmailJS(s.email, asunto, mensajeFn(s));
+    if(ok) enviados++;
+    await new Promise(r=>setTimeout(r,300));
+  }
+  return enviados;
+};
+
 const fmt = (n) => `${Number(n||0).toFixed(2).replace(".",",")}€`;
 const fmtFecha = (f) => { if(!f) return "—"; const d=f.split("T")[0].split("-"); return `${d[2]}/${d[1]}/${d[0]}`; };
 const edad = (fn) => { if(!fn) return "—"; const b=new Date(fn); const h=new Date(); let a=h.getFullYear()-b.getFullYear(); if(h<new Date(h.getFullYear(),b.getMonth(),b.getDate())) a--; return a; };
@@ -78,6 +131,7 @@ const TABS = [
   {id:"cuotas",       label:"Cuotas",        icon:"💶"},
   {id:"loteria",      label:"Lotería",       icon:"🎟️"},
   {id:"actividades",  label:"Actividades",   icon:"📅"},
+  {id:"noticias",     label:"Noticias",      icon:"📢"},
   {id:"actas",        label:"Actas",         icon:"📜"},
   {id:"tesoreria",    label:"Tesorería",     icon:"📒"},
   {id:"configuracion",label:"Config.",       icon:"⚙️"},
@@ -1169,7 +1223,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
   const [editando,setEditando]=useState(null);
   const [verInscritos,setVerInscritos]=useState(null); // actividad seleccionada
   const [notif,setNotif]=useState(null);
-  const [form,setForm]=useState({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:""});
+  const [form,setForm]=useState({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:"",avisarEmail:true});
   const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
 
@@ -1180,7 +1234,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
 
   const abrirNueva=()=>{
     setEditando(null);
-    setForm({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:""});
+    setForm({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:"",avisarEmail:true});
     setModal(true);
   };
 
@@ -1190,6 +1244,8 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
     setModal(true);
   };
 
+  const [enviandoAviso,setEnviandoAviso]=useState(false);
+
   const guardar=async()=>{
     if(!form.nombre) return;
     if(editando){
@@ -1198,9 +1254,25 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
       setActividades(p=>p.map(a=>a.id===editando.id?{...a,...form}:a));
       ok("✅ Actividad actualizada");
     }else{
-      const {data,error}=await supabase.from("actividades").insert([form]).select();
+      const {avisarEmail,...datosActividad}=form;
+      const {data,error}=await supabase.from("actividades").insert([datosActividad]).select();
       if(error){ok("❌ Error");return;}
       setActividades(p=>[...p,...data]);
+      if(avisarEmail){
+        setEnviandoAviso(true);
+        const destinatarios=destinatariosMayores14(socios);
+        const detalles=[
+          form.fecha_texto||fmtFecha(form.fecha),
+          form.precio_socio>0?`Precio: ${fmt(form.precio_socio)}/persona`:"Actividad gratuita",
+          form.plazas?`${form.plazas} plazas disponibles`:null,
+        ].filter(Boolean).join(" · ");
+        const enviados=await enviarEmailMasivo(destinatarios, `La Rana Mecánica · Nueva actividad: ${form.nombre}`,
+          (s)=>`Hola ${s.nombre},\n\nSe ha publicado una nueva actividad en la peña:\n\n🐸 ${form.nombre}\n${detalles}\n${form.descripcion?"\n"+form.descripcion+"\n":""}\nPuedes apuntarte desde Mi Zona:\nhttps://reylagarto90.github.io/rana-mecanica/#/mi-zona\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`);
+        setEnviandoAviso(false);
+        ok(`✅ Actividad creada · aviso enviado a ${enviados}/${destinatarios.length} peñistas`);
+        setModal(false); setEditando(null);
+        return;
+      }
       ok("✅ Actividad creada");
     }
     setModal(false);
@@ -1300,9 +1372,15 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
         <Input label="Responsable" value={form.responsable} onChange={v=>setF("responsable",v)}/>
       </div>
       <Input label="Descripción" value={form.descripcion} onChange={v=>setF("descripcion",v)}/>
+      {!editando&&(
+        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",marginBottom:16,padding:"10px 12px",borderRadius:8,background:form.avisarEmail?C.verdeLight:C.grisLight}}>
+          <input type="checkbox" checked={form.avisarEmail} onChange={e=>setF("avisarEmail",e.target.checked)} style={{accentColor:C.verde}}/>
+          Avisar por email a los peñistas (14+ años, con consentimiento de comunicaciones)
+        </label>
+      )}
       <div style={{display:"flex",gap:10}}>
-        <Btn outline onClick={()=>{setModal(false);setEditando(null);}} style={{flex:1}}>Cancelar</Btn>
-        <Btn onClick={guardar} style={{flex:1}}>{editando?"Guardar cambios":"Crear actividad"}</Btn>
+        <Btn outline onClick={()=>{setModal(false);setEditando(null);}} style={{flex:1}} disabled={enviandoAviso}>Cancelar</Btn>
+        <Btn onClick={guardar} style={{flex:1}} disabled={enviandoAviso}>{enviandoAviso?"Enviando aviso...":editando?"Guardar cambios":"Crear actividad"}</Btn>
       </div>
     </Modal>
 
@@ -1340,6 +1418,114 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
           <div style={{fontSize:12,color:C.muted,textAlign:"right"}}>{inscritos.length} apuntados{verInscritos.plazas?` / ${verInscritos.plazas} plazas`:""}</div>
         </div>);
       })()}
+    </Modal>
+  </div>);
+}
+
+// ══════════════════════════════════════════════════════════
+// NOTICIAS
+// ══════════════════════════════════════════════════════════
+function Noticias({noticias,setNoticias,socios}){
+  const [modal,setModal]=useState(false);
+  const [publicando,setPublicando]=useState(false);
+  const [form,setForm]=useState({titulo:"",cuerpo:"",enviarEmail:true});
+  const [archivo,setArchivo]=useState(null);
+  const [notif,setNotif]=useState(null);
+  const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),4000);};
+
+  const destinatarios = destinatariosMayores14(socios);
+
+  const guardar=async()=>{
+    if(!form.titulo||!form.cuerpo) return;
+    setPublicando(true);
+
+    let adjunto_url=null, adjunto_path=null, adjunto_nombre=null;
+    if(archivo){
+      const ext=archivo.name.split(".").pop();
+      const nombreArchivo=`${crypto.randomUUID()}.${ext}`;
+      const {error:errSubida}=await supabase.storage.from("noticias").upload(nombreArchivo,archivo,{contentType:archivo.type});
+      if(errSubida){ ok("❌ Error subiendo el adjunto"); setPublicando(false); return; }
+      const {data:firmada}=await supabase.storage.from("noticias").createSignedUrl(nombreArchivo,60*60*24*365*2);
+      adjunto_url=firmada?.signedUrl||null; adjunto_path=nombreArchivo; adjunto_nombre=archivo.name;
+    }
+
+    let enviados=0;
+    if(form.enviarEmail && destinatarios.length>0){
+      const enlaceAdjunto = adjunto_url ? `\n\nDocumento adjunto:\n${adjunto_url}` : "";
+      enviados = await enviarEmailMasivo(destinatarios, `La Rana Mecánica · ${form.titulo}`,
+        (s)=>`Hola ${s.nombre},\n\n${form.cuerpo}${enlaceAdjunto}\n\nPara cualquier consulta: penyaranamecanica@gmail.com\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`);
+    }
+
+    const {data,error}=await supabase.from("noticias").insert([{
+      titulo:form.titulo, cuerpo:form.cuerpo, adjunto_url, adjunto_path, adjunto_nombre,
+      enviado_email:form.enviarEmail, destinatarios_count:enviados,
+    }]).select();
+    setPublicando(false);
+    if(error){ok("❌ Error al publicar");return;}
+    setNoticias(p=>[...data,...p]);
+    setModal(false);
+    setForm({titulo:"",cuerpo:"",enviarEmail:true});
+    setArchivo(null);
+    ok(`✅ Publicada${form.enviarEmail?` · email enviado a ${enviados}/${destinatarios.length} peñistas`:""}`);
+  };
+
+  const eliminar=async(n)=>{
+    if(!confirm(`¿Eliminar la noticia "${n.titulo}"?`)) return;
+    if(n.adjunto_path) await supabase.storage.from("noticias").remove([n.adjunto_path]);
+    await supabase.from("noticias").delete().eq("id",n.id);
+    setNoticias(p=>p.filter(x=>x.id!==n.id));
+    ok("🗑️ Eliminada");
+  };
+
+  return(<div>
+    {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.verde,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14,maxWidth:320}}>{notif}</div>}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,flexWrap:"wrap",gap:12}}>
+      <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark}}>📢 Noticias</h2>
+      <Btn onClick={()=>setModal(true)}>+ Publicar noticia</Btn>
+    </div>
+    <p style={{fontSize:12,color:C.muted,marginBottom:18}}>El email se envía solo a socios de 14 años o más, con email registrado y que han dado su consentimiento para comunicaciones de la peña ({destinatarios.length} destinatarios ahora mismo).</p>
+
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {noticias.length===0&&<p style={{color:C.muted,fontSize:13}}>Todavía no hay noticias publicadas.</p>}
+      {noticias.map(n=>(
+        <Card key={n.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
+            <div>
+              <div style={{fontWeight:700,fontSize:15,color:C.text}}>{n.titulo}</div>
+              <div style={{fontSize:11,color:C.muted,marginTop:2}}>
+                {new Date(n.created_at).toLocaleDateString("es-ES")}
+                {n.enviado_email&&<> · 📧 enviado a {n.destinatarios_count}</>}
+              </div>
+              <p style={{fontSize:13,color:C.gris,marginTop:8,whiteSpace:"pre-wrap"}}>{n.cuerpo}</p>
+              {n.adjunto_url&&<a href={n.adjunto_url} target="_blank" rel="noreferrer" style={{display:"inline-block",marginTop:8,padding:"6px 12px",background:C.grisLight,borderRadius:8,fontSize:12,fontWeight:600,color:C.text,textDecoration:"none"}}>📎 {n.adjunto_nombre||"Ver adjunto"}</a>}
+            </div>
+            <button onClick={()=>eliminar(n)} style={{background:"none",border:"none",cursor:"pointer",color:C.rojo,fontSize:16,flexShrink:0}}>🗑️</button>
+          </div>
+        </Card>
+      ))}
+    </div>
+
+    <Modal open={modal} onClose={()=>setModal(false)} title="📢 Publicar noticia">
+      <Input label="Título" value={form.titulo} onChange={v=>setF("titulo",v)} required/>
+      <div style={{marginBottom:14}}>
+        <label style={{fontSize:13,fontWeight:600,color:C.gris,display:"block",marginBottom:6}}>Contenido</label>
+        <textarea value={form.cuerpo} onChange={e=>setF("cuerpo",e.target.value)} rows={5}
+          style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>
+      </div>
+      <div style={{marginBottom:16}}>
+        <label style={{fontSize:13,fontWeight:600,color:C.gris,display:"block",marginBottom:6}}>Adjuntar documentación (opcional)</label>
+        <input type="file" onChange={e=>setArchivo(e.target.files?.[0]||null)}
+          style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+      </div>
+      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",marginBottom:16,padding:"10px 12px",borderRadius:8,background:form.enviarEmail?C.verdeLight:C.grisLight}}>
+        <input type="checkbox" checked={form.enviarEmail} onChange={e=>setF("enviarEmail",e.target.checked)} style={{accentColor:C.verde}}/>
+        Enviar también por email a {destinatarios.length} peñistas (14+ años, con consentimiento)
+      </label>
+      <div style={{display:"flex",gap:10}}>
+        <Btn outline onClick={()=>setModal(false)} style={{flex:1}}>Cancelar</Btn>
+        <Btn onClick={guardar} style={{flex:1}} disabled={publicando}>{publicando?"Publicando...":"Publicar"}</Btn>
+      </div>
     </Modal>
   </div>);
 }
@@ -1694,6 +1880,7 @@ export default function Junta(){
   const [actividades,setActividades]=useState([]);
   const [inscripciones,setInscripciones]=useState([]);
   const [actas,setActas]=useState([]);
+  const [noticias,setNoticias]=useState([]);
   const [solicitudes,setSolicitudes]=useState([]);
   const [verificaciones,setVerificaciones]=useState([]);
   const [ejercicios,setEjercicios]=useState([]);
@@ -1707,7 +1894,7 @@ export default function Junta(){
       try{
         const [
           {data:s},{data:c},{data:lot},{data:a},{data:insc},{data:sol},{data:ver},
-          {data:ej},{data:mov},{data:tar},{data:act}
+          {data:ej},{data:mov},{data:tar},{data:act},{data:not}
         ] = await Promise.all([
           supabase.from("socios").select("*").order("numero"),
           supabase.from("cuotas").select("*").order("created_at",{ascending:false}),
@@ -1720,10 +1907,11 @@ export default function Junta(){
           supabase.from("movimientos_ejercicio").select("*").order("fecha"),
           supabase.from("tarifas").select("*").order("id"),
           supabase.from("actas").select("*").order("fecha",{ascending:false}),
+          supabase.from("noticias").select("*").order("created_at",{ascending:false}),
         ]);
         setSocios(s||[]); setCuotas(c||[]); setLoteria(lot||[]); setActividades(a||[]); setInscripciones(insc||[]);
         setSolicitudes(sol||[]); setVerificaciones(ver||[]);
-        setEjercicios(ej||[]); setMovimientos(mov||[]); setTarifas(tar||[]); setActas(act||[]);
+        setEjercicios(ej||[]); setMovimientos(mov||[]); setTarifas(tar||[]); setActas(act||[]); setNoticias(not||[]);
       }catch(e){
         setError("Error al cargar datos de Supabase");
         console.error(e);
@@ -1766,6 +1954,7 @@ export default function Junta(){
       case "loteria":       return <Loteria socios={socios} loteria={loteria} setLoteria={setLoteria} ejercicios={ejercicios} setMovimientos={setMovimientos}/>;
       case "actividades":   return <Actividades socios={socios} actividades={actividades} setActividades={setActividades} inscripciones={inscripciones} setInscripciones={setInscripciones} ejercicios={ejercicios} setMovimientos={setMovimientos}/>;
       case "actas":         return <Actas actas={actas} setActas={setActas}/>;
+      case "noticias":      return <Noticias noticias={noticias} setNoticias={setNoticias} socios={socios}/>;
       case "tesoreria":     return <Tesoreria ejercicios={ejercicios} setEjercicios={setEjercicios} movimientos={movimientos} setMovimientos={setMovimientos}/>;
       case "configuracion": return <Configuracion tarifas={tarifas} setTarifas={setTarifas}/>;
       default: return null;
