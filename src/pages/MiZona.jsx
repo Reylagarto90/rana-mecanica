@@ -202,6 +202,7 @@ const TABS=[
   {id:"inicio",    label:"Inicio",      icon:"🏠"},
   {id:"cuotas",    label:"Mis pagos",   icon:"💶"},
   {id:"actividades",label:"Actividades",icon:"📅"},
+  {id:"noticias",  label:"Noticias",    icon:"📢"},
   {id:"actas",     label:"Actas",       icon:"📜"},
   {id:"documentos",label:"Documentos",  icon:"📁"},
 ];
@@ -751,6 +752,29 @@ function TabActividades({actividades,setActividades,socio}){
   );
 }
 
+// ── TAB: NOTICIAS ─────────────────────────────────────────
+function TabNoticias({noticias}){
+  return(
+    <div>
+      <h2 style={{fontSize:18,fontWeight:700,color:C.granateDark,marginBottom:16}}>📢 Noticias</h2>
+      {noticias.length===0?(
+        <p style={{color:C.muted,fontSize:13}}>Todavía no hay noticias publicadas.</p>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {noticias.map(n=>(
+            <Card key={n.id}>
+              <div style={{fontWeight:700,fontSize:15,color:C.text}}>{n.titulo}</div>
+              <div style={{fontSize:11,color:C.muted,marginTop:2,marginBottom:8}}>{new Date(n.created_at).toLocaleDateString("es-ES")}</div>
+              <p style={{fontSize:13,color:C.gris,lineHeight:1.5,whiteSpace:"pre-wrap",marginBottom:n.adjunto_url?10:0}}>{n.cuerpo}</p>
+              {n.adjunto_url&&<a href={n.adjunto_url} target="_blank" rel="noreferrer" style={{display:"inline-block",padding:"7px 14px",background:C.granateLight,borderRadius:8,fontSize:12,fontWeight:700,color:C.granateDark,textDecoration:"none"}}>📎 {n.adjunto_nombre||"Ver adjunto"}</a>}
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── TAB: ACTAS ────────────────────────────────────────────
 function TabActas({actas}){
   return(
@@ -915,6 +939,7 @@ export default function PanelPenista(){
   const [actividades,setActividades]=useState([]);
   const [loteria,setLoteria]=useState([]);
   const [actas,setActas]=useState([]);
+  const [noticias,setNoticias]=useState([]);
   const [cargandoDatos,setCargandoDatos]=useState(false);
   const [modalCambio,setModalCambio]=useState(false);
   const [perfilesDisponibles,setPerfilesDisponibles]=useState(null); // para selector
@@ -960,13 +985,14 @@ export default function PanelPenista(){
     let cancelado=false;
     (async()=>{
       setCargandoDatos(true);
-      const [cuotasRes, actRes, inscRes, insTodasRes, loteriaRes, actasRes] = await Promise.all([
+      const [cuotasRes, actRes, inscRes, insTodasRes, loteriaRes, actasRes, noticiasRes] = await Promise.all([
         supabase.from("cuotas").select("*").eq("socio_id",socio.id).order("temporada",{ascending:false}),
         supabase.from("actividades").select("*").neq("estado","cancelada").order("fecha",{ascending:true}),
         supabase.from("inscripciones").select("actividad_id,estado").eq("socio_id",socio.id).neq("estado","cancelada"),
         supabase.from("inscripciones").select("actividad_id").neq("estado","cancelada"),
         supabase.from("loteria").select("*").eq("socio_id",socio.id).order("id",{ascending:false}),
         supabase.from("actas").select("*").order("fecha",{ascending:false}),
+        supabase.from("noticias").select("*").order("created_at",{ascending:false}),
       ]);
       if(cancelado) return;
       const misInscripciones = new Set((inscRes.data||[]).map(i=>i.actividad_id));
@@ -983,6 +1009,7 @@ export default function PanelPenista(){
       setActividades(actividadesFinal);
       setLoteria(loteriaRes.data||[]);
       setActas(actasRes.data||[]);
+      setNoticias(noticiasRes.data||[]);
       setCargandoDatos(false);
     })();
     return ()=>{cancelado=true;};
@@ -1037,6 +1064,7 @@ export default function PanelPenista(){
           {tab==="inicio"     &&<TabInicio      socio={socio} cuotas={cuotas} actividades={actividades} loteria={loteria} setTab={setTab} onSolicitarCambio={()=>setModalCambio(true)}/>}
           {tab==="cuotas"     &&<TabCuotas      cuotas={cuotas} loteria={loteria}/>}
           {tab==="actividades"&&<TabActividades actividades={actividades} setActividades={setActividades} socio={socio}/>}
+          {tab==="noticias"   &&<TabNoticias noticias={noticias}/>}
           {tab==="actas"      &&<TabActas actas={actas}/>}
           {tab==="documentos" &&<TabDocumentos  socio={socio} generandoPDF={generandoPDF} onDescargarFicha={descargarFicha}/>}
         </>)}
