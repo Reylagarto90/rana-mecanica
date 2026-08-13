@@ -78,6 +78,7 @@ const TABS = [
   {id:"cuotas",       label:"Cuotas",        icon:"💶"},
   {id:"loteria",      label:"Lotería",       icon:"🎟️"},
   {id:"actividades",  label:"Actividades",   icon:"📅"},
+  {id:"actas",        label:"Actas",         icon:"📜"},
   {id:"tesoreria",    label:"Tesorería",     icon:"📒"},
   {id:"configuracion",label:"Config.",       icon:"⚙️"},
 ];
@@ -1165,6 +1166,7 @@ function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
 // ══════════════════════════════════════════════════════════
 function Actividades({socios,actividades,setActividades,inscripciones,setInscripciones,ejercicios,setMovimientos}){
   const [modal,setModal]=useState(false);
+  const [editando,setEditando]=useState(null);
   const [verInscritos,setVerInscritos]=useState(null); // actividad seleccionada
   const [notif,setNotif]=useState(null);
   const [form,setForm]=useState({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:""});
@@ -1176,13 +1178,48 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
   const getSocio=(id)=>socios.find(s=>s.id===id);
   const inscritosDe=(actividadId)=>inscripciones.filter(i=>i.actividad_id===actividadId && i.estado!=="cancelada");
 
+  const abrirNueva=()=>{
+    setEditando(null);
+    setForm({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:""});
+    setModal(true);
+  };
+
+  const abrirEditar=(a)=>{
+    setEditando(a);
+    setForm({nombre:a.nombre,fecha:a.fecha||"",fecha_texto:a.fecha_texto||"",tipo:a.tipo,coste:a.coste||0,precio_socio:a.precio_socio||0,plazas:a.plazas||0,responsable:a.responsable||"",descripcion:a.descripcion||""});
+    setModal(true);
+  };
+
   const guardar=async()=>{
     if(!form.nombre) return;
-    const {data,error}=await supabase.from("actividades").insert([form]).select();
-    if(error){ok("❌ Error");return;}
-    setActividades(p=>[...p,...data]);
+    if(editando){
+      const {error}=await supabase.from("actividades").update(form).eq("id",editando.id);
+      if(error){ok("❌ Error");return;}
+      setActividades(p=>p.map(a=>a.id===editando.id?{...a,...form}:a));
+      ok("✅ Actividad actualizada");
+    }else{
+      const {data,error}=await supabase.from("actividades").insert([form]).select();
+      if(error){ok("❌ Error");return;}
+      setActividades(p=>[...p,...data]);
+      ok("✅ Actividad creada");
+    }
     setModal(false);
-    ok("✅ Actividad creada");
+    setEditando(null);
+  };
+
+  const eliminarActividad=async(a)=>{
+    const inscritos=inscritosDe(a.id);
+    if(!confirm(`¿Eliminar la actividad "${a.nombre}"? Se borrarán también sus ${inscritos.length} inscripciones${inscritos.some(i=>i.movimiento_id)?" y los ingresos de Tesorería ya generados por sus pagos":""}.`)) return;
+    for(const i of inscritos){
+      if(i.movimiento_id) await supabase.from("movimientos_ejercicio").delete().eq("id",i.movimiento_id);
+    }
+    await supabase.from("inscripciones").delete().eq("actividad_id",a.id);
+    await supabase.from("actividades").delete().eq("id",a.id);
+    setActividades(p=>p.filter(x=>x.id!==a.id));
+    setInscripciones(prev=>prev.filter(i=>i.actividad_id!==a.id));
+    const idsMovBorrados=inscritos.filter(i=>i.movimiento_id).map(i=>i.movimiento_id);
+    if(idsMovBorrados.length) setMovimientos(prev=>prev.filter(m=>!idsMovBorrados.includes(m.id)));
+    ok("🗑️ Actividad eliminada");
   };
 
   const [procesandoPago,setProcesandoPago]=useState(null);
@@ -1225,7 +1262,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
     {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.verde,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14}}>{notif}</div>}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:12}}>
       <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark}}>📅 Actividades · {TEMPORADA_ACTUAL}</h2>
-      <Btn onClick={()=>setModal(true)}>+ Nueva actividad</Btn>
+      <Btn onClick={abrirNueva}>+ Nueva actividad</Btn>
     </div>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
       {actividades.sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||"")).map(a=>{
@@ -1241,14 +1278,18 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
           <p style={{fontSize:12,color:C.muted,marginBottom:8}}>{a.fecha_texto||fmtFecha(a.fecha)}</p>
           {a.descripcion&&<p style={{fontSize:12,color:C.gris,marginBottom:8,fontStyle:"italic"}}>{a.descripcion}</p>}
           {a.precio_socio>0&&<div style={{fontSize:12,color:C.gris,marginBottom:8}}>💶 {fmt(a.precio_socio)}/persona · 🏟️ {a.plazas} plazas</div>}
-          <button onClick={()=>setVerInscritos(a)} style={{width:"100%",padding:"8px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:C.text}}>
+          <button onClick={()=>setVerInscritos(a)} style={{width:"100%",padding:"8px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:C.text,marginBottom:8}}>
             👥 {inscritos.length} apuntados{a.precio_socio>0?` · ${pagados} pagado${pagados===1?"":"s"}`:""}
           </button>
+          <div style={{display:"flex",gap:6}}>
+            <button onClick={()=>abrirEditar(a)} style={{flex:1,padding:"7px",background:C.blanco,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",color:C.text}}>✏️ Editar</button>
+            <button onClick={()=>eliminarActividad(a)} style={{flex:1,padding:"7px",background:C.rojoLight,border:`1px solid ${C.rojo}40`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",color:C.rojo}}>🗑️ Eliminar</button>
+          </div>
         </Card>
       );})}
     </div>
 
-    <Modal open={modal} onClose={()=>setModal(false)} title="Nueva actividad" width={560}>
+    <Modal open={modal} onClose={()=>{setModal(false);setEditando(null);}} title={editando?"Editar actividad":"Nueva actividad"} width={560}>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px"}}>
         <Input label="Nombre" value={form.nombre} onChange={v=>setF("nombre",v)} required/>
         <Input label="Fecha" value={form.fecha} onChange={v=>setF("fecha",v)} type="date"/>
@@ -1260,8 +1301,8 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
       </div>
       <Input label="Descripción" value={form.descripcion} onChange={v=>setF("descripcion",v)}/>
       <div style={{display:"flex",gap:10}}>
-        <Btn outline onClick={()=>setModal(false)} style={{flex:1}}>Cancelar</Btn>
-        <Btn onClick={guardar} style={{flex:1}}>Crear actividad</Btn>
+        <Btn outline onClick={()=>{setModal(false);setEditando(null);}} style={{flex:1}}>Cancelar</Btn>
+        <Btn onClick={guardar} style={{flex:1}}>{editando?"Guardar cambios":"Crear actividad"}</Btn>
       </div>
     </Modal>
 
@@ -1299,6 +1340,93 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
           <div style={{fontSize:12,color:C.muted,textAlign:"right"}}>{inscritos.length} apuntados{verInscritos.plazas?` / ${verInscritos.plazas} plazas`:""}</div>
         </div>);
       })()}
+    </Modal>
+  </div>);
+}
+
+// ══════════════════════════════════════════════════════════
+// ACTAS
+// ══════════════════════════════════════════════════════════
+function Actas({actas,setActas}){
+  const [modal,setModal]=useState(false);
+  const [subiendo,setSubiendo]=useState(false);
+  const [form,setForm]=useState({titulo:"",fecha:hoy,resumen:""});
+  const [archivo,setArchivo]=useState(null);
+  const [notif,setNotif]=useState(null);
+  const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
+
+  const guardar=async()=>{
+    if(!form.titulo||!form.fecha) return;
+    setSubiendo(true);
+    let pdf_url=null, pdf_path=null;
+    if(archivo){
+      const nombreArchivo=`${crypto.randomUUID()}.pdf`;
+      const {error:errSubida}=await supabase.storage.from("actas").upload(nombreArchivo,archivo,{contentType:"application/pdf"});
+      if(errSubida){ ok("❌ Error subiendo el PDF"); setSubiendo(false); return; }
+      const {data:firmada}=await supabase.storage.from("actas").createSignedUrl(nombreArchivo,60*60*24*365*2); // 2 años
+      pdf_url=firmada?.signedUrl||null; pdf_path=nombreArchivo;
+    }
+    const {data,error}=await supabase.from("actas").insert([{...form,pdf_url,pdf_path}]).select();
+    setSubiendo(false);
+    if(error){ok("❌ Error al guardar el acta");return;}
+    setActas(p=>[...data,...p]);
+    setModal(false);
+    setForm({titulo:"",fecha:hoy,resumen:""});
+    setArchivo(null);
+    ok("✅ Acta publicada");
+  };
+
+  const eliminar=async(a)=>{
+    if(!confirm(`¿Eliminar el acta "${a.titulo}"?`)) return;
+    if(a.pdf_path) await supabase.storage.from("actas").remove([a.pdf_path]);
+    await supabase.from("actas").delete().eq("id",a.id);
+    setActas(p=>p.filter(x=>x.id!==a.id));
+    ok("🗑️ Acta eliminada");
+  };
+
+  return(<div>
+    {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.verde,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14}}>{notif}</div>}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:12}}>
+      <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark}}>📜 Actas de la peña</h2>
+      <Btn onClick={()=>setModal(true)}>+ Nueva acta</Btn>
+    </div>
+    <div style={{display:"flex",flexDirection:"column",gap:12}}>
+      {actas.length===0&&<p style={{color:C.muted,fontSize:13}}>Todavía no hay actas publicadas.</p>}
+      {actas.sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||"")).map(a=>(
+        <Card key={a.id}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}>
+            <div>
+              <div style={{fontWeight:700,fontSize:15,color:C.text}}>{a.titulo}</div>
+              <div style={{fontSize:12,color:C.muted,marginTop:2}}>{fmtFecha(a.fecha)}</div>
+              {a.resumen&&<p style={{fontSize:13,color:C.gris,marginTop:8}}>{a.resumen}</p>}
+            </div>
+            <div style={{display:"flex",gap:8,flexShrink:0}}>
+              {a.pdf_url&&<a href={a.pdf_url} target="_blank" rel="noreferrer" style={{padding:"7px 12px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,fontSize:12,fontWeight:600,color:C.text,textDecoration:"none"}}>📄 PDF</a>}
+              <button onClick={()=>eliminar(a)} style={{background:"none",border:"none",cursor:"pointer",color:C.rojo,fontSize:16}}>🗑️</button>
+            </div>
+          </div>
+        </Card>
+      ))}
+    </div>
+
+    <Modal open={modal} onClose={()=>setModal(false)} title="📜 Nueva acta">
+      <Input label="Título" value={form.titulo} onChange={v=>setF("titulo",v)} placeholder="Ej: Asamblea General Ordinaria" required/>
+      <Input label="Fecha" value={form.fecha} onChange={v=>setF("fecha",v)} type="date" required/>
+      <div style={{marginBottom:14}}>
+        <label style={{fontSize:13,fontWeight:600,color:C.gris,display:"block",marginBottom:6}}>Resumen (opcional, se lee en Mi Zona sin descargar nada)</label>
+        <textarea value={form.resumen} onChange={e=>setF("resumen",e.target.value)} rows={4}
+          style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>
+      </div>
+      <div style={{marginBottom:16}}>
+        <label style={{fontSize:13,fontWeight:600,color:C.gris,display:"block",marginBottom:6}}>PDF del acta original (opcional)</label>
+        <input type="file" accept="application/pdf" onChange={e=>setArchivo(e.target.files?.[0]||null)}
+          style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+      </div>
+      <div style={{display:"flex",gap:10}}>
+        <Btn outline onClick={()=>setModal(false)} style={{flex:1}}>Cancelar</Btn>
+        <Btn onClick={guardar} style={{flex:1}} disabled={subiendo}>{subiendo?"Publicando...":"Publicar acta"}</Btn>
+      </div>
     </Modal>
   </div>);
 }
@@ -1565,6 +1693,7 @@ export default function Junta(){
   const [loteria,setLoteria]=useState([]);
   const [actividades,setActividades]=useState([]);
   const [inscripciones,setInscripciones]=useState([]);
+  const [actas,setActas]=useState([]);
   const [solicitudes,setSolicitudes]=useState([]);
   const [verificaciones,setVerificaciones]=useState([]);
   const [ejercicios,setEjercicios]=useState([]);
@@ -1578,7 +1707,7 @@ export default function Junta(){
       try{
         const [
           {data:s},{data:c},{data:lot},{data:a},{data:insc},{data:sol},{data:ver},
-          {data:ej},{data:mov},{data:tar}
+          {data:ej},{data:mov},{data:tar},{data:act}
         ] = await Promise.all([
           supabase.from("socios").select("*").order("numero"),
           supabase.from("cuotas").select("*").order("created_at",{ascending:false}),
@@ -1590,10 +1719,11 @@ export default function Junta(){
           supabase.from("ejercicios").select("*").order("id"),
           supabase.from("movimientos_ejercicio").select("*").order("fecha"),
           supabase.from("tarifas").select("*").order("id"),
+          supabase.from("actas").select("*").order("fecha",{ascending:false}),
         ]);
         setSocios(s||[]); setCuotas(c||[]); setLoteria(lot||[]); setActividades(a||[]); setInscripciones(insc||[]);
         setSolicitudes(sol||[]); setVerificaciones(ver||[]);
-        setEjercicios(ej||[]); setMovimientos(mov||[]); setTarifas(tar||[]);
+        setEjercicios(ej||[]); setMovimientos(mov||[]); setTarifas(tar||[]); setActas(act||[]);
       }catch(e){
         setError("Error al cargar datos de Supabase");
         console.error(e);
@@ -1635,6 +1765,7 @@ export default function Junta(){
       case "cuotas":        return <Cuotas socios={socios} cuotas={cuotas} setCuotas={setCuotas} ejercicios={ejercicios} setMovimientos={setMovimientos}/>;
       case "loteria":       return <Loteria socios={socios} loteria={loteria} setLoteria={setLoteria} ejercicios={ejercicios} setMovimientos={setMovimientos}/>;
       case "actividades":   return <Actividades socios={socios} actividades={actividades} setActividades={setActividades} inscripciones={inscripciones} setInscripciones={setInscripciones} ejercicios={ejercicios} setMovimientos={setMovimientos}/>;
+      case "actas":         return <Actas actas={actas} setActas={setActas}/>;
       case "tesoreria":     return <Tesoreria ejercicios={ejercicios} setEjercicios={setEjercicios} movimientos={movimientos} setMovimientos={setMovimientos}/>;
       case "configuracion": return <Configuracion tarifas={tarifas} setTarifas={setTarifas}/>;
       default: return null;

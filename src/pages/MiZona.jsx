@@ -202,6 +202,7 @@ const TABS=[
   {id:"inicio",    label:"Inicio",      icon:"🏠"},
   {id:"cuotas",    label:"Mis pagos",   icon:"💶"},
   {id:"actividades",label:"Actividades",icon:"📅"},
+  {id:"actas",     label:"Actas",       icon:"📜"},
   {id:"documentos",label:"Documentos",  icon:"📁"},
 ];
 
@@ -750,6 +751,29 @@ function TabActividades({actividades,setActividades,socio}){
   );
 }
 
+// ── TAB: ACTAS ────────────────────────────────────────────
+function TabActas({actas}){
+  return(
+    <div>
+      <h2 style={{fontSize:18,fontWeight:700,color:C.granateDark,marginBottom:16}}>📜 Actas de la peña</h2>
+      {actas.length===0?(
+        <p style={{color:C.muted,fontSize:13}}>Todavía no hay actas publicadas.</p>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {actas.map(a=>(
+            <Card key={a.id}>
+              <div style={{fontWeight:700,fontSize:15,color:C.text}}>{a.titulo}</div>
+              <div style={{fontSize:12,color:C.muted,marginTop:2,marginBottom:a.resumen?8:0}}>{fmtFecha(a.fecha)}</div>
+              {a.resumen&&<p style={{fontSize:13,color:C.gris,lineHeight:1.5,marginBottom:a.pdf_url?10:0}}>{a.resumen}</p>}
+              {a.pdf_url&&<a href={a.pdf_url} target="_blank" rel="noreferrer" style={{display:"inline-block",padding:"7px 14px",background:C.granateLight,borderRadius:8,fontSize:12,fontWeight:700,color:C.granateDark,textDecoration:"none"}}>📄 Ver PDF del acta</a>}
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── TAB: DOCUMENTOS ───────────────────────────────────────
 function TabDocumentos({socio,generandoPDF,onDescargarFicha}){
   const consentimientos=[
@@ -890,6 +914,7 @@ export default function PanelPenista(){
   const [cuotas,setCuotas]=useState([]);
   const [actividades,setActividades]=useState([]);
   const [loteria,setLoteria]=useState([]);
+  const [actas,setActas]=useState([]);
   const [cargandoDatos,setCargandoDatos]=useState(false);
   const [modalCambio,setModalCambio]=useState(false);
   const [perfilesDisponibles,setPerfilesDisponibles]=useState(null); // para selector
@@ -935,12 +960,13 @@ export default function PanelPenista(){
     let cancelado=false;
     (async()=>{
       setCargandoDatos(true);
-      const [cuotasRes, actRes, inscRes, insTodasRes, loteriaRes] = await Promise.all([
+      const [cuotasRes, actRes, inscRes, insTodasRes, loteriaRes, actasRes] = await Promise.all([
         supabase.from("cuotas").select("*").eq("socio_id",socio.id).order("temporada",{ascending:false}),
         supabase.from("actividades").select("*").neq("estado","cancelada").order("fecha",{ascending:true}),
         supabase.from("inscripciones").select("actividad_id,estado").eq("socio_id",socio.id).neq("estado","cancelada"),
         supabase.from("inscripciones").select("actividad_id").neq("estado","cancelada"),
         supabase.from("loteria").select("*").eq("socio_id",socio.id).order("id",{ascending:false}),
+        supabase.from("actas").select("*").order("fecha",{ascending:false}),
       ]);
       if(cancelado) return;
       const misInscripciones = new Set((inscRes.data||[]).map(i=>i.actividad_id));
@@ -956,6 +982,7 @@ export default function PanelPenista(){
       setCuotas(cuotasRes.data||[]);
       setActividades(actividadesFinal);
       setLoteria(loteriaRes.data||[]);
+      setActas(actasRes.data||[]);
       setCargandoDatos(false);
     })();
     return ()=>{cancelado=true;};
@@ -1010,6 +1037,7 @@ export default function PanelPenista(){
           {tab==="inicio"     &&<TabInicio      socio={socio} cuotas={cuotas} actividades={actividades} loteria={loteria} setTab={setTab} onSolicitarCambio={()=>setModalCambio(true)}/>}
           {tab==="cuotas"     &&<TabCuotas      cuotas={cuotas} loteria={loteria}/>}
           {tab==="actividades"&&<TabActividades actividades={actividades} setActividades={setActividades} socio={socio}/>}
+          {tab==="actas"      &&<TabActas actas={actas}/>}
           {tab==="documentos" &&<TabDocumentos  socio={socio} generandoPDF={generandoPDF} onDescargarFicha={descargarFicha}/>}
         </>)}
       </div>
