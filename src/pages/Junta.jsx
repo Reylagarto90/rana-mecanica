@@ -2238,6 +2238,13 @@ const mergeChange = (setState, payload) => {
 export default function Junta(){
   const [tab,setTab]=useState("dashboard");
   const [loading,setLoading]=useState(true);
+  const [menuAbierto,setMenuAbierto]=useState(false);
+  const [esMovil,setEsMovil]=useState(typeof window!=="undefined" && window.innerWidth<=860);
+  useEffect(()=>{
+    const onResize=()=>setEsMovil(window.innerWidth<=860);
+    window.addEventListener("resize",onResize);
+    return ()=>window.removeEventListener("resize",onResize);
+  },[]);
   const [socios,setSocios]=useState([]);
   const [cuotas,setCuotas]=useState([]);
   const [loteria,setLoteria]=useState([]);
@@ -2349,9 +2356,34 @@ export default function Junta(){
 
   return(
     <div style={{fontFamily:"system-ui,sans-serif",background:C.crema,minHeight:"100vh",display:"flex"}}>
+      {/* CABECERA MÓVIL (solo pantallas estrechas) */}
+      {esMovil&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:150,background:C.granateDark,display:"flex",alignItems:"center",gap:12,padding:"10px 14px",boxShadow:"0 2px 8px rgba(0,0,0,0.2)"}}>
+          <button onClick={()=>setMenuAbierto(true)} aria-label="Abrir menú" style={{background:"rgba(255,255,255,0.12)",border:"none",borderRadius:8,width:38,height:38,fontSize:18,color:C.blanco,cursor:"pointer",flexShrink:0}}>☰</button>
+          <img src={LOGO} alt="logo" style={{width:30,height:30,borderRadius:"50%",objectFit:"cover",flexShrink:0}}/>
+          <div style={{color:C.blanco,fontWeight:700,fontSize:14,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+            {TABS.find(t=>t.id===tab)?.label||"Panel"}
+          </div>
+        </div>
+      )}
+
+      {/* FONDO OSCURO AL ABRIR EL MENÚ EN MÓVIL */}
+      {esMovil&&menuAbierto&&(
+        <div onClick={()=>setMenuAbierto(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:160}}/>
+      )}
+
       {/* SIDEBAR */}
-      <div style={{width:220,background:C.granateDark,minHeight:"100vh",display:"flex",flexDirection:"column",flexShrink:0,position:"sticky",top:0,height:"100vh",overflowY:"auto"}}>
-        <div style={{padding:"20px 16px 16px",borderBottom:"1px solid rgba(255,255,255,0.1)",textAlign:"center"}}>
+      <div style={{
+        width:220,background:C.granateDark,minHeight:"100vh",display:"flex",flexDirection:"column",flexShrink:0,overflowY:"auto",
+        ...(esMovil
+          ? {position:"fixed",top:0,left:0,height:"100vh",zIndex:170,transform:menuAbierto?"translateX(0)":"translateX(-100%)",transition:"transform 0.25s ease"}
+          : {position:"sticky",top:0,height:"100vh"}
+        ),
+      }}>
+        <div style={{padding:"20px 16px 16px",borderBottom:"1px solid rgba(255,255,255,0.1)",textAlign:"center",position:"relative"}}>
+          {esMovil&&(
+            <button onClick={()=>setMenuAbierto(false)} aria-label="Cerrar menú" style={{position:"absolute",top:10,right:10,background:"rgba(255,255,255,0.12)",border:"none",borderRadius:6,width:28,height:28,color:C.blanco,cursor:"pointer",fontSize:14}}>✕</button>
+          )}
           <img src={LOGO} alt="logo" style={{width:64,height:64,borderRadius:"50%",objectFit:"cover",border:"3px solid rgba(255,255,255,0.3)",display:"block",margin:"0 auto 10px"}}/>
           <div style={{color:C.blanco,fontWeight:700,fontSize:13,lineHeight:1.3}}>Panel Junta Directiva</div>
           <div style={{color:"rgba(255,255,255,0.4)",fontSize:10,marginTop:3}}>{TEMPORADA_ACTUAL}</div>
@@ -2359,7 +2391,7 @@ export default function Junta(){
         <nav style={{padding:"12px 10px",flex:1}}>
           {TABS.map(t=>{
             const badge=badges[t.id]||0;
-            return(<button key={t.id} onClick={()=>setTab(t.id)} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"9px 12px",marginBottom:2,background:tab===t.id?"rgba(255,255,255,0.18)":"transparent",border:tab===t.id?"1px solid rgba(255,255,255,0.2)":"1px solid transparent",borderRadius:8,cursor:"pointer",color:tab===t.id?C.blanco:"rgba(255,255,255,0.55)",fontSize:13,fontWeight:600,textAlign:"left",fontFamily:"inherit"}}>
+            return(<button key={t.id} onClick={()=>{setTab(t.id); if(esMovil) setMenuAbierto(false);}} style={{display:"flex",alignItems:"center",justifyContent:"space-between",width:"100%",padding:"9px 12px",marginBottom:2,background:tab===t.id?"rgba(255,255,255,0.18)":"transparent",border:tab===t.id?"1px solid rgba(255,255,255,0.2)":"1px solid transparent",borderRadius:8,cursor:"pointer",color:tab===t.id?C.blanco:"rgba(255,255,255,0.55)",fontSize:13,fontWeight:600,textAlign:"left",fontFamily:"inherit"}}>
               <span><span style={{marginRight:8}}>{t.icon}</span>{t.label}</span>
               {badge>0&&<span style={{background:C.oro,color:C.blanco,borderRadius:20,padding:"1px 7px",fontSize:10,fontWeight:800}}>{badge}</span>}
             </button>);
@@ -2384,7 +2416,7 @@ export default function Junta(){
       </div>
 
       {/* CONTENIDO */}
-      <div style={{flex:1,padding:"26px 28px",overflowY:"auto",minWidth:0}}>
+      <div style={{flex:1,padding:esMovil?"70px 14px 24px":"26px 28px",overflowY:"auto",minWidth:0,width:esMovil?"100%":"auto"}}>
         <div style={{maxWidth:1080}}>{renderTab()}</div>
       </div>
     </div>
