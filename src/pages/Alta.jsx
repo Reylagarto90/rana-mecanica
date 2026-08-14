@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { supabase, insertarSolicitudAlta } from "../supabase.js";
 
+const LOGO = "/rana-mecanica/logo.jpg";
+
 const EMAILJS_SERVICE_ID  = "service_g9n6e5c";
 const EMAILJS_TEMPLATE_ID = "template_0rjj2y8";
 const EMAILJS_PUBLIC_KEY  = "IvxWWpgwA15GDRGyF";
@@ -336,7 +338,7 @@ export default function FormularioAlta() {
             📱 Te avisaremos cuando tu alta sea aprobada. El pago de la cuota se gestionará tras la confirmación.
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, color: C.muted }}>
-            <span style={{ fontSize: 20 }}>🐸</span> Peña La Rana Mecánica · Levante UD
+            <img src={LOGO} alt="" style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover" }}/> Peña La Rana Mecánica · Levante UD
           </div>
         </div>
       </div>
@@ -355,7 +357,9 @@ export default function FormularioAlta() {
       <div style={{ width: "100%", maxWidth: 480 }}>
         {/* CABECERA */}
         <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div style={{ fontSize: 48, marginBottom: 8 }}>🐸</div>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>
+            <img src={LOGO} alt="Peña La Rana Mecánica" style={{ width: 72, height: 72, borderRadius: "50%", objectFit: "cover", border: "2px solid rgba(255,255,255,0.3)" }}/>
+          </div>
           <h1 style={{ fontFamily: "'Playfair Display', serif", color: C.blanco, fontSize: 26, marginBottom: 6 }}>
             Hazte peñista
           </h1>
