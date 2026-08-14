@@ -98,6 +98,62 @@ function Select({label,value,onChange,options,required}){
     </select>
   </div>);
 }
+// ── SELECTOR DE DESTINATARIOS DE EMAIL ────────────────────────
+// Reutilizado en Noticias, Actas y Actividades: casilla general para
+// activar el envío + lista de personas para marcar/desmarcar a mano.
+function SelectorEmail({socios, habilitado, setHabilitado, seleccion, setSeleccion}){
+  const destinatarios = destinatariosMayores14(socios);
+  const [busqueda,setBusqueda]=useState("");
+
+  useEffect(()=>{
+    // Al activarse por primera vez, seleccionar a todos por defecto
+    if(habilitado && seleccion.size===0 && destinatarios.length>0){
+      setSeleccion(new Set(destinatarios.map(s=>s.id)));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[habilitado]);
+
+  const todosMarcados = destinatarios.length>0 && destinatarios.every(s=>seleccion.has(s.id));
+  const toggleTodos = () => setSeleccion(todosMarcados ? new Set() : new Set(destinatarios.map(s=>s.id)));
+  const toggleUno = (id) => setSeleccion(prev=>{
+    const next=new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const filtrados = destinatarios.filter(s=>`${s.nombre} ${s.apellidos}`.toLowerCase().includes(busqueda.toLowerCase()));
+
+  return(
+    <div style={{marginBottom:16}}>
+      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",padding:"10px 12px",borderRadius:8,background:habilitado?C.verdeLight:C.grisLight}}>
+        <input type="checkbox" checked={habilitado} onChange={e=>setHabilitado(e.target.checked)} style={{accentColor:C.verde}}/>
+        Enviar por email ({destinatarios.length} peñistas cumplen los requisitos: 14+ años, con consentimiento)
+      </label>
+      {habilitado&&(
+        <div style={{border:`1.5px solid ${C.border}`,borderRadius:8,marginTop:8,padding:10}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,gap:8}}>
+            <input value={busqueda} onChange={e=>setBusqueda(e.target.value)} placeholder="🔍 Buscar..."
+              style={{flex:1,padding:"6px 10px",borderRadius:6,border:`1px solid ${C.border}`,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+            <button onClick={toggleTodos} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:12,fontWeight:600,fontFamily:"inherit",whiteSpace:"nowrap"}}>
+              {todosMarcados?"Ninguno":"Todos"}
+            </button>
+          </div>
+          <div style={{fontSize:11,color:C.muted,marginBottom:6}}>{seleccion.size} de {destinatarios.length} seleccionados</div>
+          <div style={{maxHeight:180,overflowY:"auto",display:"flex",flexDirection:"column",gap:2}}>
+            {filtrados.map(s=>(
+              <label key={s.id} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 6px",fontSize:13,cursor:"pointer",borderRadius:6}}>
+                <input type="checkbox" checked={seleccion.has(s.id)} onChange={()=>toggleUno(s.id)} style={{accentColor:C.verde}}/>
+                {s.nombre} {s.apellidos} <span style={{color:C.muted,fontSize:11}}>({s.numero})</span>
+              </label>
+            ))}
+            {filtrados.length===0&&<p style={{fontSize:12,color:C.muted,padding:6}}>Sin resultados.</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function KPI({label,value,sub,color=C.granate,icon}){
   return(<Card style={{borderLeft:`5px solid ${color}`,flex:1,minWidth:140,padding:"18px 20px"}}>
     {icon&&<div style={{fontSize:18,marginBottom:4}}>{icon}</div>}
@@ -1264,7 +1320,9 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
   const [editando,setEditando]=useState(null);
   const [verInscritos,setVerInscritos]=useState(null); // actividad seleccionada
   const [notif,setNotif]=useState(null);
-  const [form,setForm]=useState({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:"",avisarEmail:true});
+  const [form,setForm]=useState({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:""});
+  const [avisarEmail,setAvisarEmail]=useState(true);
+  const [seleccionEmail,setSeleccionEmail]=useState(new Set());
   const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
 
@@ -1275,7 +1333,9 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
 
   const abrirNueva=()=>{
     setEditando(null);
-    setForm({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:"",avisarEmail:true});
+    setForm({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:""});
+    setAvisarEmail(true);
+    setSeleccionEmail(new Set());
     setModal(true);
   };
 
@@ -1295,24 +1355,23 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
       setActividades(p=>p.map(a=>a.id===editando.id?{...a,...form}:a));
       ok("✅ Actividad actualizada");
     }else{
-      const {avisarEmail,...datosActividad}=form;
-      const {data,error}=await supabase.from("actividades").insert([datosActividad]).select();
+      const {data,error}=await supabase.from("actividades").insert([form]).select();
       if(error){ok("❌ Error");return;}
       setActividades(p=>[...p,...data]);
-      if(avisarEmail){
+      const destinatariosFinal=destinatariosMayores14(socios).filter(s=>seleccionEmail.has(s.id));
+      if(avisarEmail && destinatariosFinal.length>0){
         setEnviandoAviso(true);
-        const destinatarios=destinatariosMayores14(socios);
         const detalles=[
           form.fecha_texto||fmtFecha(form.fecha),
           form.precio_socio>0?`Precio: ${fmt(form.precio_socio)}/persona`:"Actividad gratuita",
           form.plazas?`${form.plazas} plazas disponibles`:null,
         ].filter(Boolean).join(" · ");
-        const enviados=await enviarEmailMasivo(destinatarios, `La Rana Mecánica · Nueva actividad: ${form.nombre}`,
+        const enviados=await enviarEmailMasivo(destinatariosFinal, `La Rana Mecánica · Nueva actividad: ${form.nombre}`,
           (s)=>`Hola ${s.nombre},\n\nSe ha publicado una nueva actividad en la peña:\n\n🐸 ${form.nombre}\n${detalles}\n${form.descripcion?"\n"+form.descripcion+"\n":""}\nPuedes apuntarte desde Mi Zona:\nhttps://reylagarto90.github.io/rana-mecanica/#/mi-zona\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`);
-        await supabase.from("actividades").update({aviso_enviados:enviados,aviso_total:destinatarios.length}).eq("id",data[0].id);
-        setActividades(p=>p.map(a=>a.id===data[0].id?{...a,aviso_enviados:enviados,aviso_total:destinatarios.length}:a));
+        await supabase.from("actividades").update({aviso_enviados:enviados,aviso_total:destinatariosFinal.length}).eq("id",data[0].id);
+        setActividades(p=>p.map(a=>a.id===data[0].id?{...a,aviso_enviados:enviados,aviso_total:destinatariosFinal.length}:a));
         setEnviandoAviso(false);
-        ok(`✅ Actividad creada · aviso enviado a ${enviados}/${destinatarios.length} peñistas`);
+        ok(`✅ Actividad creada · aviso enviado a ${enviados}/${destinatariosFinal.length} peñistas`);
         setModal(false); setEditando(null);
         return;
       }
@@ -1429,10 +1488,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
       </div>
       <Input label="Descripción" value={form.descripcion} onChange={v=>setF("descripcion",v)}/>
       {!editando&&(
-        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",marginBottom:16,padding:"10px 12px",borderRadius:8,background:form.avisarEmail?C.verdeLight:C.grisLight}}>
-          <input type="checkbox" checked={form.avisarEmail} onChange={e=>setF("avisarEmail",e.target.checked)} style={{accentColor:C.verde}}/>
-          Avisar por email a los peñistas (14+ años, con consentimiento de comunicaciones)
-        </label>
+        <SelectorEmail socios={socios} habilitado={avisarEmail} setHabilitado={setAvisarEmail} seleccion={seleccionEmail} setSeleccion={setSeleccionEmail}/>
       )}
       <div style={{display:"flex",gap:10}}>
         <Btn outline onClick={()=>{setModal(false);setEditando(null);}} style={{flex:1}} disabled={enviandoAviso}>Cancelar</Btn>
@@ -1497,13 +1553,16 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
 function Noticias({noticias,setNoticias,socios}){
   const [modal,setModal]=useState(false);
   const [publicando,setPublicando]=useState(false);
-  const [form,setForm]=useState({titulo:"",cuerpo:"",enviarEmail:true});
+  const [form,setForm]=useState({titulo:"",cuerpo:""});
+  const [enviarEmail,setEnviarEmail]=useState(true);
+  const [seleccionEmail,setSeleccionEmail]=useState(new Set());
   const [archivo,setArchivo]=useState(null);
   const [notif,setNotif]=useState(null);
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
   const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),4000);};
 
-  const destinatarios = destinatariosMayores14(socios);
+  const destinatariosElegibles = destinatariosMayores14(socios);
+  const destinatariosFinal = destinatariosElegibles.filter(s=>seleccionEmail.has(s.id));
 
   const guardar=async()=>{
     if(!form.titulo||!form.cuerpo) return;
@@ -1520,23 +1579,25 @@ function Noticias({noticias,setNoticias,socios}){
     }
 
     let enviados=0;
-    if(form.enviarEmail && destinatarios.length>0){
+    if(enviarEmail && destinatariosFinal.length>0){
       const enlaceAdjunto = adjunto_url ? `\n\nDocumento adjunto:\n${adjunto_url}` : "";
-      enviados = await enviarEmailMasivo(destinatarios, `La Rana Mecánica · ${form.titulo}`,
+      enviados = await enviarEmailMasivo(destinatariosFinal, `La Rana Mecánica · ${form.titulo}`,
         (s)=>`Hola ${s.nombre},\n\n${form.cuerpo}${enlaceAdjunto}\n\nPara cualquier consulta: penyaranamecanica@gmail.com\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`);
     }
 
     const {data,error}=await supabase.from("noticias").insert([{
       titulo:form.titulo, cuerpo:form.cuerpo, adjunto_url, adjunto_path, adjunto_nombre,
-      enviado_email:form.enviarEmail, destinatarios_count:enviados, total_destinatarios:destinatarios.length,
+      enviado_email:enviarEmail, destinatarios_count:enviados, total_destinatarios:destinatariosFinal.length,
     }]).select();
     setPublicando(false);
     if(error){ok("❌ Error al publicar");return;}
     setNoticias(p=>[...data,...p]);
     setModal(false);
-    setForm({titulo:"",cuerpo:"",enviarEmail:true});
+    setForm({titulo:"",cuerpo:""});
+    setEnviarEmail(true);
+    setSeleccionEmail(new Set());
     setArchivo(null);
-    ok(`✅ Publicada${form.enviarEmail?` · email enviado a ${enviados}/${destinatarios.length} peñistas`:""}`);
+    ok(`✅ Publicada${enviarEmail?` · email enviado a ${enviados}/${destinatariosFinal.length} peñistas`:""}`);
   };
 
   const eliminar=async(n)=>{
@@ -1553,7 +1614,7 @@ function Noticias({noticias,setNoticias,socios}){
       <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark}}>📢 Noticias</h2>
       <Btn onClick={()=>setModal(true)}>+ Publicar noticia</Btn>
     </div>
-    <p style={{fontSize:12,color:C.muted,marginBottom:18}}>El email se envía solo a socios de 14 años o más, con email registrado y que han dado su consentimiento para comunicaciones de la peña ({destinatarios.length} destinatarios ahora mismo).</p>
+    <p style={{fontSize:12,color:C.muted,marginBottom:18}}>El email se envía solo a socios de 14 años o más, con email registrado y que han dado su consentimiento para comunicaciones de la peña ({destinatariosElegibles.length} cumplen los requisitos ahora mismo; puedes elegir a cuáles se lo mandas al publicar).</p>
 
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       {noticias.length===0&&<p style={{color:C.muted,fontSize:13}}>Todavía no hay noticias publicadas.</p>}
@@ -1587,10 +1648,7 @@ function Noticias({noticias,setNoticias,socios}){
         <input type="file" onChange={e=>setArchivo(e.target.files?.[0]||null)}
           style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
       </div>
-      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",marginBottom:16,padding:"10px 12px",borderRadius:8,background:form.enviarEmail?C.verdeLight:C.grisLight}}>
-        <input type="checkbox" checked={form.enviarEmail} onChange={e=>setF("enviarEmail",e.target.checked)} style={{accentColor:C.verde}}/>
-        Enviar también por email a {destinatarios.length} peñistas (14+ años, con consentimiento)
-      </label>
+      <SelectorEmail socios={socios} habilitado={enviarEmail} setHabilitado={setEnviarEmail} seleccion={seleccionEmail} setSeleccion={setSeleccionEmail}/>
       <div style={{display:"flex",gap:10}}>
         <Btn outline onClick={()=>setModal(false)} style={{flex:1}}>Cancelar</Btn>
         <Btn onClick={guardar} style={{flex:1}} disabled={publicando}>{publicando?"Publicando...":"Publicar"}</Btn>
@@ -1605,13 +1663,16 @@ function Noticias({noticias,setNoticias,socios}){
 function Actas({actas,setActas,socios}){
   const [modal,setModal]=useState(false);
   const [subiendo,setSubiendo]=useState(false);
-  const [form,setForm]=useState({titulo:"",fecha:hoy,resumen:"",enviarEmail:false});
+  const [form,setForm]=useState({titulo:"",fecha:hoy,resumen:""});
+  const [enviarEmail,setEnviarEmail]=useState(false);
+  const [seleccionEmail,setSeleccionEmail]=useState(new Set());
   const [archivo,setArchivo]=useState(null);
   const [notif,setNotif]=useState(null);
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
   const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),4000);};
 
-  const destinatarios = destinatariosMayores14(socios);
+  const destinatariosElegibles = destinatariosMayores14(socios);
+  const destinatariosFinal = destinatariosElegibles.filter(s=>seleccionEmail.has(s.id));
 
   const guardar=async()=>{
     if(!form.titulo||!form.fecha) return;
@@ -1624,21 +1685,22 @@ function Actas({actas,setActas,socios}){
       const {data:firmada}=await supabase.storage.from("actas").createSignedUrl(nombreArchivo,60*60*24*365*2); // 2 años
       pdf_url=firmada?.signedUrl||null; pdf_path=nombreArchivo;
     }
-    const {enviarEmail,...datosActa}=form;
     let enviados=0;
-    if(enviarEmail && destinatarios.length>0){
+    if(enviarEmail && destinatariosFinal.length>0){
       const enlace = pdf_url ? `\n\nPDF del acta:\n${pdf_url}` : "";
-      enviados = await enviarEmailMasivo(destinatarios, `La Rana Mecánica · Nueva acta: ${form.titulo}`,
+      enviados = await enviarEmailMasivo(destinatariosFinal, `La Rana Mecánica · Nueva acta: ${form.titulo}`,
         (s)=>`Hola ${s.nombre},\n\nSe ha publicado una nueva acta:\n\n📜 ${form.titulo} (${fmtFecha(form.fecha)})\n${form.resumen?"\n"+form.resumen+"\n":""}${enlace}\n\nPuedes consultarla en Mi Zona:\nhttps://reylagarto90.github.io/rana-mecanica/#/mi-zona\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`);
     }
-    const {data,error}=await supabase.from("actas").insert([{...datosActa,pdf_url,pdf_path}]).select();
+    const {data,error}=await supabase.from("actas").insert([{...form,pdf_url,pdf_path}]).select();
     setSubiendo(false);
     if(error){ok("❌ Error al guardar el acta");return;}
     setActas(p=>[...data,...p]);
     setModal(false);
-    setForm({titulo:"",fecha:hoy,resumen:"",enviarEmail:false});
+    setForm({titulo:"",fecha:hoy,resumen:""});
+    setEnviarEmail(false);
+    setSeleccionEmail(new Set());
     setArchivo(null);
-    ok(`✅ Acta publicada${enviarEmail?` · email enviado a ${enviados}/${destinatarios.length}`:""}`);
+    ok(`✅ Acta publicada${enviarEmail?` · email enviado a ${enviados}/${destinatariosFinal.length}`:""}`);
   };
 
   const eliminar=async(a)=>{
@@ -1687,10 +1749,7 @@ function Actas({actas,setActas,socios}){
         <input type="file" accept="application/pdf" onChange={e=>setArchivo(e.target.files?.[0]||null)}
           style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
       </div>
-      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,cursor:"pointer",marginBottom:16,padding:"10px 12px",borderRadius:8,background:form.enviarEmail?C.verdeLight:C.grisLight}}>
-        <input type="checkbox" checked={form.enviarEmail} onChange={e=>setF("enviarEmail",e.target.checked)} style={{accentColor:C.verde}}/>
-        Avisar por email a {destinatarios.length} peñistas (14+ años, con consentimiento)
-      </label>
+      <SelectorEmail socios={socios} habilitado={enviarEmail} setHabilitado={setEnviarEmail} seleccion={seleccionEmail} setSeleccion={setSeleccionEmail}/>
       <div style={{display:"flex",gap:10}}>
         <Btn outline onClick={()=>setModal(false)} style={{flex:1}}>Cancelar</Btn>
         <Btn onClick={guardar} style={{flex:1}} disabled={subiendo}>{subiendo?"Publicando...":"Publicar acta"}</Btn>
