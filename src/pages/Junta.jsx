@@ -440,6 +440,16 @@ function CuentasPendientes({socios,setSocios}){
     ok(`Solicitud de ${socio.nombre} rechazada`);
   };
 
+  const eliminarCuenta=async(socio)=>{
+    if(!confirm(`¿Eliminar la cuenta de ${socio.nombre} ${socio.apellidos}? Dejará de poder entrar con usuario y contraseña; podrá volver a registrarse si hace falta.`)) return;
+    setProcesando(socio.id);
+    const {error}=await supabase.from("socios").update({auth_user_id:null,cuenta_aprobada:false,cuenta_solicitada_at:null}).eq("id",socio.id);
+    setProcesando(null);
+    if(error){ ok("❌ Error al eliminar la cuenta"); return; }
+    setSocios(prev=>prev.map(s=>s.id===socio.id?{...s,auth_user_id:null,cuenta_aprobada:false}:s));
+    ok(`🗑️ Cuenta de ${socio.nombre} eliminada`);
+  };
+
   return(<div>
     {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.rojo,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14,boxShadow:"0 8px 24px rgba(0,0,0,0.2)"}}>{notif}</div>}
 
@@ -478,7 +488,10 @@ function CuentasPendientes({socios,setSocios}){
             <span style={{fontWeight:600,fontSize:13}}>{s.nombre} {s.apellidos}</span>
             <span style={{fontFamily:"monospace",color:C.muted,fontSize:11,marginLeft:8}}>{s.numero}</span>
           </div>
-          <span style={{fontSize:12,color:C.muted}}>{s.email}</span>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <span style={{fontSize:12,color:C.muted}}>{s.email}</span>
+            <button onClick={()=>eliminarCuenta(s)} disabled={procesando===s.id} title="Eliminar cuenta" style={{background:"none",border:"none",cursor:procesando===s.id?"wait":"pointer",color:C.rojo,fontSize:15}}>🗑️</button>
+          </div>
         </div>
       ))}
     </Card>
