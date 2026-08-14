@@ -848,6 +848,8 @@ function Verificaciones({verificaciones,setVerificaciones,socios,setSocios}){
   const pendientes=verificaciones.filter(v=>v.estado==="pendiente");
   const historial=verificaciones.filter(v=>v.estado!=="pendiente");
 
+  const campoBonito=(c)=>({nombre:"Nombre",apellidos:"Apellidos",dni:"DNI/NIE",telefono:"Teléfono",email:"Email",fecha_nac:"Fecha nacimiento",municipio:"Municipio",tiene_acciones:"Tiene acciones Levante",num_acciones:"Nº de acciones",es_abonado:"Es abonado",num_abonado:"Nº de abonado"}[c]||c);
+
   const aprobar=async(v)=>{
     // Aplicar el cambio al socio
     await supabase.from("socios").update({[v.campo]:v.valor_nuevo}).eq("id",v.socio_id);
@@ -856,6 +858,11 @@ function Verificaciones({verificaciones,setVerificaciones,socios,setSocios}){
     setVerificaciones(p=>p.map(x=>x.id===v.id?{...x,estado:"aprobada"}:x));
     setComentario("");
     ok(`✅ Corrección de ${getSocio(v.socio_id)?.nombre} aprobada y aplicada`);
+    const socio=getSocio(v.socio_id);
+    if(socio?.email){
+      enviarEmailJS(socio.email, "La Rana Mecánica · Cambio de datos aprobado",
+        `Hola ${socio.nombre},\n\nTu solicitud de cambio en "${campoBonito(v.campo)}" ha sido aprobada y ya está actualizada en tu ficha.\n\nNuevo valor: ${v.valor_nuevo}\n\nPara cualquier consulta: penyaranamecanica@gmail.com\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`);
+    }
   };
 
   const rechazar=async(v)=>{
@@ -863,6 +870,11 @@ function Verificaciones({verificaciones,setVerificaciones,socios,setSocios}){
     setVerificaciones(p=>p.map(x=>x.id===v.id?{...x,estado:"rechazada"}:x));
     setComentario("");
     ok(`Corrección rechazada`,C.rojo);
+    const socio=getSocio(v.socio_id);
+    if(socio?.email){
+      enviarEmailJS(socio.email, "La Rana Mecánica · Cambio de datos rechazado",
+        `Hola ${socio.nombre},\n\nTu solicitud de cambio en "${campoBonito(v.campo)}" no ha sido aprobada.${comentario?`\n\nComentario de la junta: ${comentario}`:""}\n\nSi crees que es un error, contacta con nosotros: penyaranamecanica@gmail.com\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`);
+    }
   };
 
   const eliminar=async(v)=>{
@@ -871,8 +883,6 @@ function Verificaciones({verificaciones,setVerificaciones,socios,setSocios}){
     setVerificaciones(p=>p.filter(x=>x.id!==v.id));
     ok("🗑️ Eliminado");
   };
-
-  const campoBonito=(c)=>({nombre:"Nombre",apellidos:"Apellidos",dni:"DNI/NIE",telefono:"Teléfono",email:"Email",fecha_nac:"Fecha nacimiento"}[c]||c);
 
   return(<div>
     {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:notif.color,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14,boxShadow:"0 8px 24px rgba(0,0,0,0.2)"}}>{notif.msg}</div>}

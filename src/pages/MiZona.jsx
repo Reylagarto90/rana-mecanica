@@ -837,7 +837,7 @@ function TabActas({actas}){
 }
 
 // ── TAB: DOCUMENTOS ───────────────────────────────────────
-function TabDocumentos({socio,generandoPDF,onDescargarFicha}){
+function TabDocumentos({socio,generandoPDF,onDescargarFicha,misSolicitudes}){
   const consentimientos=[
     {k:"rgpd",                   l:"Tratamiento de datos (obligatorio)"},
     {k:"consent_foto_interna",   l:"Foto comunicación interna"},
@@ -848,6 +848,12 @@ function TabDocumentos({socio,generandoPDF,onDescargarFicha}){
     {k:"consent_patrocinadores", l:"Info patrocinadores"},
     {k:"consent_whatsapp",       l:"Grupo WhatsApp"},
   ];
+  const campoBonito=(c)=>({nombre:"Nombre",apellidos:"Apellidos",dni:"DNI/NIE",telefono:"Teléfono",email:"Email",fecha_nac:"Fecha nacimiento",municipio:"Municipio",tiene_acciones:"Tiene acciones Levante",num_acciones:"Nº de acciones",es_abonado:"Es abonado",num_abonado:"Nº de abonado"}[c]||c);
+  const estadoInfo={
+    pendiente:{text:"⏳ Pendiente",color:C.oro,bg:C.oroLight},
+    aprobada:{text:"✅ Aprobada",color:C.verde,bg:C.verdeLight},
+    rechazada:{text:"❌ Rechazada",color:C.rojo,bg:C.rojoLight},
+  };
 
   return(
     <div>
@@ -890,6 +896,28 @@ function TabDocumentos({socio,generandoPDF,onDescargarFicha}){
         ))}
       </Card>
 
+      {/* Mis solicitudes de cambio */}
+      <h3 style={{fontSize:12,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>Mis solicitudes de cambio</h3>
+      <Card style={{padding:0,marginBottom:16}}>
+        {misSolicitudes.length===0?(
+          <p style={{padding:16,color:C.muted,fontSize:13}}>Todavía no has solicitado ningún cambio.</p>
+        ):misSolicitudes.map((v,i)=>{
+          const ei=estadoInfo[v.estado]||estadoInfo.pendiente;
+          return(
+            <div key={v.id} style={{padding:"11px 16px",borderBottom:i<misSolicitudes.length-1?`1px solid ${C.border}`:"none"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:v.comentario_junta?4:0}}>
+                <div>
+                  <span style={{fontSize:13,fontWeight:600,color:C.text}}>{campoBonito(v.campo)}</span>
+                  <span style={{fontSize:12,color:C.muted,marginLeft:8}}>→ {v.valor_nuevo}</span>
+                </div>
+                <Pill text={ei.text} color={ei.color} bg={ei.bg}/>
+              </div>
+              {v.comentario_junta&&<div style={{fontSize:12,color:C.muted,fontStyle:"italic"}}>Junta: {v.comentario_junta}</div>}
+            </div>
+          );
+        })}
+      </Card>
+
       <div style={{padding:"12px 16px",background:C.azulLight,borderRadius:12,fontSize:13,color:C.azul,lineHeight:1.5}}>
         ℹ️ Para cambiar cualquier consentimiento, entra en el portal de verificación de datos o contacta con la junta directiva.
       </div>
@@ -928,7 +956,12 @@ function ModalCambio({open,onClose,socio}){
     {key:"telefono",label:"Teléfono"},
     {key:"email",label:"Email"},
     {key:"municipio",label:"Municipio"},
+    {key:"tiene_acciones",label:"¿Tienes acciones del Levante?",type:"boolean"},
+    {key:"num_acciones",label:"Número de acciones",type:"number"},
+    {key:"es_abonado",label:"¿Eres abonado?",type:"boolean"},
+    {key:"num_abonado",label:"Número de abonado"},
   ];
+  const campoActual=camposEditables.find(c=>c.key===campo);
 
   if(!open) return null;
 
@@ -945,14 +978,22 @@ function ModalCambio({open,onClose,socio}){
         <div>
           <div style={{marginBottom:14}}>
             <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>¿Qué dato quieres cambiar?</label>
-            <select value={campo} onChange={e=>setCampo(e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit"}}>
+            <select value={campo} onChange={e=>{setCampo(e.target.value);setValor("");}} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit"}}>
               {camposEditables.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}
             </select>
           </div>
           <div style={{marginBottom:14}}>
             <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>Nuevo valor</label>
-            <input value={valor} onChange={e=>setValor(e.target.value)} placeholder={`Nuevo ${camposEditables.find(c=>c.key===campo)?.label||"valor"}`}
-              style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:15,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            {campoActual?.type==="boolean"?(
+              <select value={valor} onChange={e=>setValor(e.target.value)} style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:15,outline:"none",fontFamily:"inherit"}}>
+                <option value="">— Selecciona —</option>
+                <option value="true">Sí</option>
+                <option value="false">No</option>
+              </select>
+            ):(
+              <input value={valor} onChange={e=>setValor(e.target.value)} type={campoActual?.type==="number"?"number":"text"} placeholder={`Nuevo ${campoActual?.label||"valor"}`}
+                style={{width:"100%",padding:"10px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:15,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            )}
           </div>
           <div style={{marginBottom:18}}>
             <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:6,textTransform:"uppercase",letterSpacing:0.5}}>Comentario (opcional)</label>
@@ -978,6 +1019,7 @@ export default function PanelPenista(){
   const [loteria,setLoteria]=useState([]);
   const [actas,setActas]=useState([]);
   const [historialPagos,setHistorialPagos]=useState([]);
+  const [misSolicitudes,setMisSolicitudes]=useState([]);
   const [noticias,setNoticias]=useState([]);
   const [cargandoDatos,setCargandoDatos]=useState(false);
   const [modalCambio,setModalCambio]=useState(false);
@@ -1030,7 +1072,7 @@ export default function PanelPenista(){
     let cancelado=false;
     (async()=>{
       setCargandoDatos(true);
-      const [cuotasRes, actRes, inscRes, insTodasRes, loteriaRes, actasRes, noticiasRes] = await Promise.all([
+      const [cuotasRes, actRes, inscRes, insTodasRes, loteriaRes, actasRes, noticiasRes, verifRes] = await Promise.all([
         supabase.from("cuotas").select("*").eq("socio_id",socio.id).order("temporada",{ascending:false}),
         supabase.from("actividades").select("*").neq("estado","cancelada").order("fecha",{ascending:true}),
         supabase.from("inscripciones").select("actividad_id,estado,pagado,fecha_pago").eq("socio_id",socio.id).neq("estado","cancelada"),
@@ -1038,6 +1080,7 @@ export default function PanelPenista(){
         supabase.from("loteria").select("*").eq("socio_id",socio.id).order("id",{ascending:false}),
         supabase.from("actas").select("*").order("fecha",{ascending:false}),
         supabase.from("noticias").select("*").order("created_at",{ascending:false}),
+        supabase.from("verificaciones").select("*").eq("socio_id",socio.id).order("created_at",{ascending:false}),
       ]);
       if(cancelado) return;
       const misInscripciones = inscRes.data||[];
@@ -1078,6 +1121,7 @@ export default function PanelPenista(){
       setActas(actasRes.data||[]);
       setNoticias(noticiasRes.data||[]);
       setHistorialPagos(historial);
+      setMisSolicitudes(verifRes.data||[]);
       setCargandoDatos(false);
     })();
     return ()=>{cancelado=true;};
@@ -1134,7 +1178,7 @@ export default function PanelPenista(){
           {tab==="actividades"&&<TabActividades actividades={actividades} setActividades={setActividades} socio={socio}/>}
           {tab==="noticias"   &&<TabNoticias noticias={noticias}/>}
           {tab==="actas"      &&<TabActas actas={actas}/>}
-          {tab==="documentos" &&<TabDocumentos  socio={socio} generandoPDF={generandoPDF} onDescargarFicha={descargarFicha}/>}
+          {tab==="documentos" &&<TabDocumentos  socio={socio} generandoPDF={generandoPDF} onDescargarFicha={descargarFicha} misSolicitudes={misSolicitudes}/>}
         </>)}
       </div>
 
