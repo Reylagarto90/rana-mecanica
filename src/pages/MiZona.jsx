@@ -540,7 +540,7 @@ function TabInicio({socio,cuotas,actividades,loteria,setTab,onSolicitarCambio}){
 }
 
 // ── TAB: MIS PAGOS (cuotas + lotería) ─────────────────────
-function TabCuotas({cuotas,loteria}){
+function TabCuotas({cuotas,loteria,historialPagos}){
   const totalCuotas=cuotas.reduce((a,c)=>a+Number(c.importe),0);
   const cobradoCuotas=cuotas.filter(c=>c.pagado).reduce((a,c)=>a+Number(c.importe),0);
   const importeLoteria=(l)=>{
@@ -551,6 +551,8 @@ function TabCuotas({cuotas,loteria}){
   const cobradoLoteria=loteria.filter(l=>l.pagado).reduce((a,l)=>a+Number(l.importe_total||0),0);
   const totalGeneral=totalCuotas+totalLoteria;
   const cobradoGeneral=cobradoCuotas+cobradoLoteria;
+
+  const tipoIcon={Cuota:"💶",Lotería:"🎟️",Actividad:"📅"};
 
   return(
     <div>
@@ -565,6 +567,24 @@ function TabCuotas({cuotas,loteria}){
           <div style={{fontSize:24,fontWeight:800,color:C.oro}}>{fmt(totalGeneral-cobradoGeneral)}</div>
         </Card>
       </div>
+
+      <h3 style={{fontSize:12,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>📜 Historial de pagos realizados</h3>
+      <Card style={{padding:0,marginBottom:24}}>
+        {historialPagos.length===0?(
+          <p style={{padding:16,color:C.muted,fontSize:13}}>Todavía no tienes pagos registrados.</p>
+        ):historialPagos.map((p,i)=>(
+          <div key={i} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 16px",borderBottom:i<historialPagos.length-1?`1px solid ${C.border}`:"none"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:18}}>{tipoIcon[p.tipo]||"💰"}</span>
+              <div>
+                <div style={{fontWeight:600,fontSize:13,color:C.text}}>{p.concepto}</div>
+                <div style={{fontSize:11,color:C.muted}}>{p.tipo}{p.forma?` · ${p.forma}`:""} · {fmtFecha(p.fecha)}</div>
+              </div>
+            </div>
+            <div style={{fontWeight:700,fontSize:14,color:C.verde}}>{fmt(p.importe)}</div>
+          </div>
+        ))}
+      </Card>
 
       <h3 style={{fontSize:12,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>Cuotas</h3>
       <div style={{display:"flex",flexDirection:"column",gap:12,marginBottom:cuotas.length?24:8}}>
@@ -655,7 +675,7 @@ function TabActividades({actividades,setActividades,socio}){
     }
     setProcesando(null);
     if(error){ ok("❌ Error al apuntarte, inténtalo de nuevo"); return; }
-    setActividades(p=>p.map(a=>a.id===id?{...a,inscrito:true,inscritos:a.inscritos+1}:a));
+    setActividades(p=>p.map(a=>a.id===id?{...a,inscrito:true,miEstado:"pendiente",inscritos:a.inscritos+1}:a));
     setModalAct(null);
     ok("✅ Te has apuntado correctamente. La junta confirmará tu plaza.");
   };
@@ -665,7 +685,7 @@ function TabActividades({actividades,setActividades,socio}){
     const {error}=await supabase.from("inscripciones").update({estado:"cancelada"}).eq("actividad_id",id).eq("socio_id",socio.id);
     setProcesando(null);
     if(error){ ok("❌ Error al cancelar, inténtalo de nuevo"); return; }
-    setActividades(p=>p.map(a=>a.id===id?{...a,inscrito:false,inscritos:Math.max(0,a.inscritos-1)}:a));
+    setActividades(p=>p.map(a=>a.id===id?{...a,inscrito:false,miEstado:null,inscritos:Math.max(0,a.inscritos-1)}:a));
     ok("Has cancelado tu inscripción.");
   };
 
@@ -688,7 +708,7 @@ function TabActividades({actividades,setActividades,socio}){
                 <div style={{flex:1}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
                     <div style={{fontWeight:700,fontSize:14,color:C.text,paddingRight:8}}>{a.nombre}</div>
-                    <Pill text={a.inscrito?"✅ Apuntado":lleno?"🔴 Completo":"Plaza libre"} color={a.inscrito?C.verde:lleno?C.rojo:C.azul} bg={a.inscrito?C.verdeLight:lleno?C.rojoLight:C.azulLight}/>
+                    <Pill text={a.inscrito?(a.miEstado==="confirmada"?"✅ Confirmado":"⏳ Pendiente de confirmar"):lleno?"🔴 Completo":"Plaza libre"} color={a.inscrito?(a.miEstado==="confirmada"?C.verde:C.oro):lleno?C.rojo:C.azul} bg={a.inscrito?(a.miEstado==="confirmada"?C.verdeLight:C.oroLight):lleno?C.rojoLight:C.azulLight}/>
                   </div>
                   <div style={{fontSize:12,color:C.muted,marginBottom:8}}>📅 {fmtFecha(a.fecha)} · {a.precio_socio===0?"Gratis":fmt(a.precio_socio)}/persona · {a.inscritos}/{a.plazas} plazas</div>
                   <div style={{display:"flex",gap:8}}>
@@ -939,6 +959,7 @@ export default function PanelPenista(){
   const [actividades,setActividades]=useState([]);
   const [loteria,setLoteria]=useState([]);
   const [actas,setActas]=useState([]);
+  const [historialPagos,setHistorialPagos]=useState([]);
   const [noticias,setNoticias]=useState([]);
   const [cargandoDatos,setCargandoDatos]=useState(false);
   const [modalCambio,setModalCambio]=useState(false);
@@ -988,28 +1009,51 @@ export default function PanelPenista(){
       const [cuotasRes, actRes, inscRes, insTodasRes, loteriaRes, actasRes, noticiasRes] = await Promise.all([
         supabase.from("cuotas").select("*").eq("socio_id",socio.id).order("temporada",{ascending:false}),
         supabase.from("actividades").select("*").neq("estado","cancelada").order("fecha",{ascending:true}),
-        supabase.from("inscripciones").select("actividad_id,estado").eq("socio_id",socio.id).neq("estado","cancelada"),
+        supabase.from("inscripciones").select("actividad_id,estado,pagado,fecha_pago").eq("socio_id",socio.id).neq("estado","cancelada"),
         supabase.from("inscripciones").select("actividad_id").neq("estado","cancelada"),
         supabase.from("loteria").select("*").eq("socio_id",socio.id).order("id",{ascending:false}),
         supabase.from("actas").select("*").order("fecha",{ascending:false}),
         supabase.from("noticias").select("*").order("created_at",{ascending:false}),
       ]);
       if(cancelado) return;
-      const misInscripciones = new Set((inscRes.data||[]).map(i=>i.actividad_id));
+      const misInscripciones = inscRes.data||[];
+      const misInscripcionesMap = new Map(misInscripciones.map(i=>[i.actividad_id,i]));
       const conteoPorActividad = {};
       (insTodasRes.data||[]).forEach(i=>{ conteoPorActividad[i.actividad_id]=(conteoPorActividad[i.actividad_id]||0)+1; });
       const hoyStr = new Date().toISOString().split("T")[0];
       const actividadesFinal = (actRes.data||[]).map(a=>({
         ...a,
-        inscrito: misInscripciones.has(a.id),
+        inscrito: misInscripcionesMap.has(a.id),
+        miEstado: misInscripcionesMap.get(a.id)?.estado||null,
         inscritos: conteoPorActividad[a.id]||0,
         pasada: a.fecha < hoyStr,
       }));
+
+      // Historial de pagos consolidado: cuotas + lotería + actividades, todo ya PAGADO
+      const historial=[];
+      (cuotasRes.data||[]).filter(c=>c.pagado).forEach(c=>historial.push({
+        tipo:"Cuota", concepto:`Cuota ${c.temporada}`, importe:Number(c.importe),
+        fecha:c.fecha_pago, forma:c.forma_pago,
+      }));
+      (loteriaRes.data||[]).filter(l=>l.pagado).forEach(l=>historial.push({
+        tipo:"Lotería", concepto:l.concepto, importe:Number(l.importe_total||0),
+        fecha:l.fecha_pago, forma:null,
+      }));
+      misInscripciones.filter(i=>i.pagado).forEach(i=>{
+        const act=(actRes.data||[]).find(a=>a.id===i.actividad_id);
+        historial.push({
+          tipo:"Actividad", concepto:act?.nombre||"Actividad", importe:Number(act?.precio_socio||0),
+          fecha:i.fecha_pago, forma:null,
+        });
+      });
+      historial.sort((a,b)=>(b.fecha||"").localeCompare(a.fecha||""));
+
       setCuotas(cuotasRes.data||[]);
       setActividades(actividadesFinal);
       setLoteria(loteriaRes.data||[]);
       setActas(actasRes.data||[]);
       setNoticias(noticiasRes.data||[]);
+      setHistorialPagos(historial);
       setCargandoDatos(false);
     })();
     return ()=>{cancelado=true;};
@@ -1062,7 +1106,7 @@ export default function PanelPenista(){
           <div style={{textAlign:"center",padding:"60px 0",color:C.muted}}>Cargando tus datos...</div>
         ):(<>
           {tab==="inicio"     &&<TabInicio      socio={socio} cuotas={cuotas} actividades={actividades} loteria={loteria} setTab={setTab} onSolicitarCambio={()=>setModalCambio(true)}/>}
-          {tab==="cuotas"     &&<TabCuotas      cuotas={cuotas} loteria={loteria}/>}
+          {tab==="cuotas"     &&<TabCuotas      cuotas={cuotas} loteria={loteria} historialPagos={historialPagos}/>}
           {tab==="actividades"&&<TabActividades actividades={actividades} setActividades={setActividades} socio={socio}/>}
           {tab==="noticias"   &&<TabNoticias noticias={noticias}/>}
           {tab==="actas"      &&<TabActas actas={actas}/>}
