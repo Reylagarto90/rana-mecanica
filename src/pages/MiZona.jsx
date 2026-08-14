@@ -999,7 +999,13 @@ export default function PanelPenista(){
       if(session?.user){
         const {data:socioRow}=await supabase.from("socios").select("*").eq("auth_user_id",session.user.id).maybeSingle();
         if(socioRow){
-          if(socioRow.cuenta_aprobada){ setSocio(socioRow); setPerfilesSession([socioRow]); }
+          if(socioRow.cuenta_aprobada){
+            // Igual que en el login manual: si es tutor de menores, se ofrece elegir perfil
+            const {data:menores}=await supabase.from("socios").select("*").eq("tutor_id",socioRow.id).eq("estado","activo");
+            const perfiles=[socioRow, ...(menores||[])];
+            if(perfiles.length>1) handleMultiple(perfiles);
+            else { setSocio(socioRow); setPerfilesSession([socioRow]); }
+          }
           else setPantalla("pendiente");
         }
       }
