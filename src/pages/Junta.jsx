@@ -2370,6 +2370,9 @@ export default function Junta(){
             <span style={{width:7,height:7,borderRadius:"50%",background:enVivo?"#2ecc71":"#888",display:"inline-block"}}/>
             {enVivo?"En vivo":"Conectando..."}
           </div>
+          <a href="#/mi-zona" style={{display:"flex",width:"100%",padding:"9px 12px",marginBottom:8,background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.25)",borderRadius:8,cursor:"pointer",color:C.blanco,fontSize:13,fontWeight:600,fontFamily:"inherit",alignItems:"center",justifyContent:"center",gap:8,textDecoration:"none",boxSizing:"border-box"}}>
+            🐸 Ir a Mi Zona
+          </a>
           <button onClick={()=>{ sessionStorage.removeItem("junta_auth"); window.location.hash="#/junta/login"; window.location.reload(); }}
             style={{width:"100%",padding:"9px 12px",marginBottom:10,background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:8,cursor:"pointer",color:C.blanco,fontSize:13,fontWeight:600,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
             🚪 Cerrar sesión
