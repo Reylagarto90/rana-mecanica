@@ -545,7 +545,7 @@ function TabInicio({socio,cuotas,actividades,loteria,setTab,onSolicitarCambio}){
           <button onClick={onSolicitarCambio} style={{padding:"6px 12px",background:C.granateLight,color:C.granate,border:`1px solid ${C.granate}30`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit"}}>✏️ Solicitar cambio</button>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
-          {[["Nombre",`${socio.nombre} ${socio.apellidos}`],["DNI",socio.dni||"—"],["Teléfono",socio.telefono],["Email",socio.email||"—"],["Municipio",socio.municipio||"—"],["Alta",fmtFecha(socio.fecha_alta)]].map(([k,v])=>(
+          {[["Nombre",`${socio.nombre} ${socio.apellidos}`],["DNI",socio.dni||"—"],["Teléfono",socio.telefono],["Email",socio.email||"—"],["Municipio",socio.municipio||"—"],["Alta",fmtFecha(socio.fecha_alta)],["Acciones Levante",socio.tiene_acciones?"Sí":"No"],["Nº acciones",socio.tiene_acciones?(socio.num_acciones||"—"):"—"],["Abonado",socio.es_abonado?"Sí":"No"],["Nº abonado",socio.es_abonado?(socio.num_abonado||"—"):"—"]].map(([k,v])=>(
             <div key={k} style={{padding:"9px 11px",background:C.grisLight,borderRadius:9}}>
               <div style={{fontSize:10,color:C.muted,fontWeight:700,textTransform:"uppercase",letterSpacing:0.4,marginBottom:2}}>{k}</div>
               <div style={{fontSize:13,fontWeight:600,color:v==="—"?C.muted:C.text,wordBreak:"break-word"}}>{v}</div>
