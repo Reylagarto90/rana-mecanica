@@ -246,7 +246,7 @@ function SelectorPerfil({perfiles,onSeleccionar,onVolver}){
 }
 
 // ── ACCESO CON USUARIO Y CONTRASEÑA (con aprobación de junta) ────────
-function AccesoCuenta({onLogin,onPendiente,onVolver}){
+function AccesoCuenta({onLogin,onMultiple,onPendiente,onVolver}){
   const [modo,setModo]=useState("entrar"); // entrar | registro
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
@@ -262,10 +262,14 @@ function AccesoCuenta({onLogin,onPendiente,onVolver}){
     const {data,error:errAuth}=await supabase.auth.signInWithPassword({email,password});
     if(errAuth||!data?.user){ setLoading(false); setError("Email o contraseña incorrectos."); return; }
     const {data:socioRow}=await supabase.from("socios").select("*").eq("auth_user_id",data.user.id).maybeSingle();
+    if(!socioRow){ setLoading(false); setError("Tu cuenta no está vinculada a ningún socio. Contacta con la junta."); return; }
+    if(!socioRow.cuenta_aprobada){ setLoading(false); onPendiente(); return; }
+    // Igual que en el acceso por teléfono: si es tutor de menores, se le ofrece elegir perfil
+    const {data:menores}=await supabase.from("socios").select("*").eq("tutor_id",socioRow.id).eq("estado","activo");
+    const perfiles=[socioRow, ...(menores||[])];
     setLoading(false);
-    if(!socioRow){ setError("Tu cuenta no está vinculada a ningún socio. Contacta con la junta."); return; }
-    if(!socioRow.cuenta_aprobada){ onPendiente(); return; }
-    onLogin(socioRow);
+    if(perfiles.length>1) onMultiple(perfiles);
+    else onLogin(socioRow);
   };
 
   const registrar=async()=>{
@@ -403,7 +407,21 @@ function Login({onLogin,onMultiple,onVolver}){
         const {data:m}=await supabase.from("socios").select("*").eq("tutor_id",tutorAdulto.id).eq("estado","activo");
         if(m) menoresTutor=m;
       }
-      const perfiles=[...new Map([...data,...menoresTutor].map(s=>[s.id,s])).values()];
+      const perfilesTodos=[...new Map([...data,...menoresTutor].map(s=>[s.id,s])).values()];
+      // Si algún adulto de este teléfono ya tiene cuenta aprobada, se bloquea el
+      // acceso por teléfono para TODA la familia (adultos y menores vinculados a
+      // él), no solo para quien tiene la cuenta — así migran juntos, y el tutor
+      // puede seguir accediendo a sus hijos desde su propia cuenta.
+      const algunTutorConCuenta=adultos.some(a=>a.cuenta_aprobada);
+      const bloqueado=(s)=>s.cuenta_aprobada || (s.tutor_id && algunTutorConCuenta);
+      const conCuentaAprobada=perfilesTodos.filter(bloqueado);
+      const perfiles=perfilesTodos.filter(s=>!bloqueado(s));
+      if(perfiles.length===0){
+        setError(conCuentaAprobada.length>0
+          ? "Ya tenéis una cuenta creada con usuario y contraseña en esta familia. Usa esa opción para entrar (podrás elegir entre los perfiles vinculados)."
+          : "No hemos encontrado ningún peñista con ese teléfono. Contacta con la junta.");
+        setLoading(false); return;
+      }
       if(perfiles.length>1) onMultiple(perfiles);
       else onLogin(perfiles[0]);
     }catch(e){ setError("Error de conexión. Inténtalo de nuevo."); }
@@ -1075,7 +1093,7 @@ export default function PanelPenista(){
   if(comprobandoSesion) return <div style={{minHeight:"100vh",background:C.granateDark,display:"flex",alignItems:"center",justifyContent:"center",color:C.blanco,fontFamily:"system-ui,sans-serif"}}>Cargando...</div>;
   if(pantalla==="pendiente") return <PantallaPendiente onLogout={logout}/>;
   if(!socio&&pantalla==="inicial") return <AccesoInicial onCuenta={()=>setPantalla("cuenta")} onTelefono={()=>setPantalla("telefono")}/>;
-  if(!socio&&pantalla==="cuenta") return <AccesoCuenta onLogin={s=>{setSocio(s);setPerfilesSession([s]);}} onPendiente={()=>setPantalla("pendiente")} onVolver={()=>setPantalla("inicial")}/>;
+  if(!socio&&pantalla==="cuenta") return <AccesoCuenta onLogin={s=>{setSocio(s);setPerfilesSession([s]);}} onMultiple={handleMultiple} onPendiente={()=>setPantalla("pendiente")} onVolver={()=>setPantalla("inicial")}/>;
   if(!socio&&pantalla==="telefono"&&!perfilesDisponibles) return <Login onLogin={s=>{setSocio(s);setPerfilesSession([s]);}} onMultiple={handleMultiple} onVolver={()=>setPantalla("inicial")}/>;
   if(perfilesDisponibles) return <SelectorPerfil perfiles={perfilesDisponibles} onSeleccionar={handleSeleccionar} onVolver={()=>{setPerfilesDisponibles(null);}}/>;
 
