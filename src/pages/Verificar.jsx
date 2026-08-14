@@ -456,23 +456,25 @@ function FormularioUnificado({socio,onEnviado,onLogout,onCambiarPerfil,perfiles}
     if(!form.rgpd){alert("El consentimiento de tratamiento de datos es obligatorio para ser socio.");return;}
     setEnviando(true);
 
-    // 1. Guardar consentimientos y datos de Levante directamente
-    await supabase.from("socios").update({
-      verificado: true,
-      fecha_consentimiento: new Date().toISOString(),
-      rgpd:                  form.rgpd,
-      consent_foto_interna:  form.consent_foto_interna,
-      consent_foto_rrss:     form.consent_foto_rrss,
-      consent_foto_web:      form.consent_foto_web,
-      consent_foto_levante:  form.consent_foto_levante,
-      consent_promo_pena:    form.consent_promo_pena,
-      consent_patrocinadores:form.consent_patrocinadores,
-      consent_whatsapp:      form.consent_whatsapp,
-      tiene_acciones: form.tiene_acciones,
-      num_acciones:   form.tiene_acciones?Number(form.num_acciones)||0:0,
-      es_abonado:     form.es_abonado,
-      num_abonado:    form.es_abonado?form.num_abonado:null,
-    }).eq("id",socio.id);
+    // 1. Guardar consentimientos y datos de Levante mediante función segura
+    //    (el acceso por teléfono no tiene permiso de UPDATE directo en socios;
+    //    esta función solo puede tocar estos campos concretos, nada más)
+    const {error: errConsent} = await supabase.rpc("actualizar_consentimientos", {
+      p_socio_id: socio.id,
+      p_rgpd: form.rgpd,
+      p_consent_foto_interna: form.consent_foto_interna,
+      p_consent_foto_rrss: form.consent_foto_rrss,
+      p_consent_foto_web: form.consent_foto_web,
+      p_consent_foto_levante: form.consent_foto_levante,
+      p_consent_promo_pena: form.consent_promo_pena,
+      p_consent_patrocinadores: form.consent_patrocinadores,
+      p_consent_whatsapp: form.consent_whatsapp,
+      p_tiene_acciones: form.tiene_acciones,
+      p_num_acciones: form.tiene_acciones?Number(form.num_acciones)||0:0,
+      p_es_abonado: form.es_abonado,
+      p_num_abonado: form.es_abonado?form.num_abonado:null,
+    });
+    if(errConsent) console.error("Error guardando consentimientos:", errConsent);
 
     // 2. Si hay cambios en datos personales → crear verificaciones pendientes
     const camposDatos=["nombre","apellidos","dni","fecha_nac","email","telefono","municipio"];
