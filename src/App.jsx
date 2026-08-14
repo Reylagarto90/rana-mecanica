@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import Bienvenida from './pages/Bienvenida.jsx'
 import Alta       from './pages/Alta.jsx'
 import Verificar  from './pages/Verificar.jsx'
 import MiZona     from './pages/MiZona.jsx'
@@ -14,13 +15,13 @@ function RutaPrivada({ children }) {
 export default function App() {
   return (
     <Routes>
-      <Route path="/"            element={<Navigate to="/alta" replace />} />
+      <Route path="/"            element={<Bienvenida />} />
       <Route path="/alta"        element={<Alta />} />
       <Route path="/verificar"   element={<Verificar />} />
       <Route path="/mi-zona"     element={<MiZona />} />
       <Route path="/junta/login" element={<JuntaLogin />} />
       <Route path="/junta/*"     element={<RutaPrivada><Junta /></RutaPrivada>} />
-      <Route path="*"            element={<Navigate to="/alta" replace />} />
+      <Route path="*"            element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

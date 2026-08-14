@@ -24,6 +24,17 @@ const EMAILJS_SERVICE_ID  = "service_g9n6e5c";
 const EMAILJS_TEMPLATE_ID = "template_0rjj2y8";
 const EMAILJS_PUBLIC_KEY  = "IvxWWpgwA15GDRGyF";
 
+// Compartir por WhatsApp — enlace estándar wa.me, sin API ni cuenta especial
+const compartirWhatsApp = (texto) => {
+  window.open(`https://wa.me/?text=${encodeURIComponent(texto)}`, "_blank");
+};
+
+const BotonWhatsApp = ({texto, style}) => (
+  <button onClick={()=>compartirWhatsApp(texto)} style={{padding:"7px 12px",background:"#25D366",border:"none",borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,color:"#fff",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6,...style}}>
+    📤 WhatsApp
+  </button>
+);
+
 const enviarEmailJS = async (destinatario, asunto, mensaje) => {
   try{
     const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
@@ -1468,10 +1479,11 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
           <button onClick={()=>setVerInscritos(a)} style={{width:"100%",padding:"8px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:C.text,marginBottom:8}}>
             👥 {inscritos.length} apuntados{a.precio_socio>0?` · ${pagados} pagado${pagados===1?"":"s"}`:""}
           </button>
-          <div style={{display:"flex",gap:6}}>
+          <div style={{display:"flex",gap:6,marginBottom:6}}>
             <button onClick={()=>abrirEditar(a)} style={{flex:1,padding:"7px",background:C.blanco,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",color:C.text}}>✏️ Editar</button>
             <button onClick={()=>eliminarActividad(a)} style={{flex:1,padding:"7px",background:C.rojoLight,border:`1px solid ${C.rojo}40`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",color:C.rojo}}>🗑️ Eliminar</button>
           </div>
+          <BotonWhatsApp style={{width:"100%",justifyContent:"center"}} texto={`🐸 Nueva actividad en La Rana Mecánica:\n\n*${a.nombre}*\n📅 ${a.fecha_texto||fmtFecha(a.fecha)}\n${a.precio_socio>0?`💶 ${fmt(a.precio_socio)}/persona`:"Gratuita"}\n\nApúntate desde Mi Zona:\nhttps://reylagarto90.github.io/rana-mecanica/#/mi-zona`}/>
         </Card>
       );})}
     </div>
@@ -1629,6 +1641,9 @@ function Noticias({noticias,setNoticias,socios}){
               </div>
               <p style={{fontSize:13,color:C.gris,marginTop:8,whiteSpace:"pre-wrap"}}>{n.cuerpo}</p>
               {n.adjunto_url&&<a href={n.adjunto_url} target="_blank" rel="noreferrer" style={{display:"inline-block",marginTop:8,padding:"6px 12px",background:C.grisLight,borderRadius:8,fontSize:12,fontWeight:600,color:C.text,textDecoration:"none"}}>📎 {n.adjunto_nombre||"Ver adjunto"}</a>}
+              <div style={{marginTop:10}}>
+                <BotonWhatsApp texto={`🐸 *${n.titulo}*\n\n${n.cuerpo}${n.adjunto_url?`\n\n${n.adjunto_url}`:""}\n\nMás en Mi Zona: https://reylagarto90.github.io/rana-mecanica/#/mi-zona`}/>
+              </div>
             </div>
             <button onClick={()=>eliminar(n)} style={{background:"none",border:"none",cursor:"pointer",color:C.rojo,fontSize:16,flexShrink:0}}>🗑️</button>
           </div>
@@ -1726,6 +1741,9 @@ function Actas({actas,setActas,socios}){
               <div style={{fontWeight:700,fontSize:15,color:C.text}}>{a.titulo}</div>
               <div style={{fontSize:12,color:C.muted,marginTop:2}}>{fmtFecha(a.fecha)}</div>
               {a.resumen&&<p style={{fontSize:13,color:C.gris,marginTop:8}}>{a.resumen}</p>}
+              <div style={{marginTop:10}}>
+                <BotonWhatsApp texto={`📜 Nueva acta publicada: *${a.titulo}* (${fmtFecha(a.fecha)})${a.resumen?`\n\n${a.resumen}`:""}${a.pdf_url?`\n\n${a.pdf_url}`:""}\n\nConsúltala en Mi Zona: https://reylagarto90.github.io/rana-mecanica/#/mi-zona`}/>
+              </div>
             </div>
             <div style={{display:"flex",gap:8,flexShrink:0}}>
               {a.pdf_url&&<a href={a.pdf_url} target="_blank" rel="noreferrer" style={{padding:"7px 12px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,fontSize:12,fontWeight:600,color:C.text,textDecoration:"none"}}>📄 PDF</a>}
