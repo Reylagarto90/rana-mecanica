@@ -1,0 +1,15 @@
+{
+  "name": "La Rana Mecánica - Peña Levantinista",
+  "short_name": "Rana Mecánica",
+  "description": "Peña Levantinista La Rana Mecánica · Godella-Rocafort",
+  "start_url": "/rana-mecanica/",
+  "scope": "/rana-mecanica/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#8B0A3A",
+  "theme_color": "#8B0A3A",
+  "icons": [
+    { "src": "/rana-mecanica/logo.jpg", "sizes": "192x192", "type": "image/jpeg", "purpose": "any maskable" },
+    { "src": "/rana-mecanica/logo.jpg", "sizes": "512x512", "type": "image/jpeg", "purpose": "any maskable" }
+  ]
+}

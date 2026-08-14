@@ -10,10 +10,19 @@
     <meta name="theme-color" content="#8B0A3A"/>
     <title>La Rana Mecánica · Peña Levantinista</title>
     <meta name="description" content="Peña Levantinista La Rana Mecánica · Godella-Rocafort"/>
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐸</text></svg>"/>
-    <script type="module" crossorigin src="/rana-mecanica/assets/index-zh2XZR0W.js"></script>
+    <link rel="manifest" href="/rana-mecanica/manifest.json"/>
+    <link rel="apple-touch-icon" href="/rana-mecanica/logo.jpg"/>
+    <link rel="icon" href="/rana-mecanica/logo.jpg"/>
+    <script type="module" crossorigin src="/rana-mecanica/assets/index-BWqHH69e.js"></script>
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/rana-mecanica/service-worker.js').catch(() => {});
+        });
+      }
+    </script>
   </body>
 </html>
