@@ -1989,6 +1989,8 @@ function Tesoreria({ejercicios,setEjercicios,movimientos,setMovimientos}){
   const [form,setForm]=useState({tipo:"ingreso",concepto:"",categoria:"Cuotas socios",importe:"",fecha:hoy,observaciones:""});
   const [formNuevoEj,setFormNuevoEj]=useState({nombre:"",ejercicioBaseId:"",incluirRemanente:true});
   const [notif,setNotif]=useState(null);
+  const [categoriasAbiertas,setCategoriasAbiertas]=useState(new Set());
+  const toggleCategoria=(cat)=>setCategoriasAbiertas(prev=>{const n=new Set(prev); n.has(cat)?n.delete(cat):n.add(cat); return n;});
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
   const setFNE=(k,v)=>setFormNuevoEj(f=>({...f,[k]:v}));
   const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
@@ -2107,9 +2109,55 @@ function Tesoreria({ejercicios,setEjercicios,movimientos,setMovimientos}){
         const lista=movEj.filter(m=>m.tipo===tipo);
         const total=lista.reduce((a,m)=>a+Number(m.importe),0);
         const color=tipo==="ingreso"?C.verde:C.rojo;
+
+        if(tipo==="ingreso"){
+          // Agrupado por categoría, desplegable al pulsar
+          const grupos={};
+          lista.forEach(m=>{ (grupos[m.categoria||"Sin categoría"]=grupos[m.categoria||"Sin categoría"]||[]).push(m); });
+          const categorias=Object.keys(grupos).sort((a,b)=>grupos[b].reduce((s,m)=>s+Number(m.importe),0)-grupos[a].reduce((s,m)=>s+Number(m.importe),0));
+          return(<Card key={tipo} style={{padding:0,overflow:"hidden"}}>
+            <div style={{background:color,padding:"12px 18px"}}>
+              <div style={{color:C.blanco,fontWeight:700,fontSize:14}}>INGRESOS</div>
+            </div>
+            {categorias.map(cat=>{
+              const items=grupos[cat];
+              const subtotal=items.reduce((a,m)=>a+Number(m.importe),0);
+              const abierta=categoriasAbiertas.has(cat);
+              return(
+                <div key={cat}>
+                  <div onClick={()=>toggleCategoria(cat)} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 16px",borderBottom:`1px solid ${C.border}`,cursor:"pointer",background:abierta?`${color}08`:C.blanco}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:11,color:C.muted,transform:abierta?"rotate(90deg)":"none",display:"inline-block",transition:"transform 0.15s"}}>▶</span>
+                      <span style={{fontSize:13,fontWeight:700,color:C.text}}>{cat}</span>
+                      <span style={{fontSize:11,color:C.muted}}>({items.length})</span>
+                    </div>
+                    <span style={{fontWeight:700,color,fontSize:14}}>{fmt(subtotal)}</span>
+                  </div>
+                  {abierta&&items.map(m=>(
+                    <div key={m.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 16px 9px 32px",borderBottom:`1px solid ${C.border}`,background:"#fafafa"}}>
+                      <div>
+                        <div style={{fontSize:13}}>{m.concepto}</div>
+                        {m.observaciones&&<div style={{fontSize:11,color:C.gris,marginTop:3,fontStyle:"italic"}}>📝 {m.observaciones}</div>}
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <span style={{fontWeight:600,color,fontSize:13}}>{fmt(m.importe)}</span>
+                        <button onClick={()=>eliminarMovimiento(m)} title="Eliminar" style={{background:"none",border:"none",cursor:"pointer",color:C.muted,fontSize:13,fontFamily:"inherit"}}>🗑️</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+            <div style={{display:"flex",justifyContent:"space-between",padding:"12px 18px",background:`${color}12`}}>
+              <span style={{fontWeight:800,color}}>TOTAL</span>
+              <span style={{fontWeight:800,color,fontSize:16}}>{fmt(total)}</span>
+            </div>
+          </Card>);
+        }
+
         return(<Card key={tipo} style={{padding:0,overflow:"hidden"}}>
           <div style={{background:color,padding:"12px 18px"}}>
-            <div style={{color:C.blanco,fontWeight:700,fontSize:14}}>{tipo==="ingreso"?"INGRESOS":"GASTOS"}</div>
+            <div style={{color:C.blanco,fontWeight:700,fontSize:14}}>GASTOS</div>
           </div>
           {lista.map(m=>(
             <div key={m.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 16px",borderBottom:`1px solid ${C.border}`}}>
