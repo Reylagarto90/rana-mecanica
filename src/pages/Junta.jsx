@@ -35,6 +35,101 @@ const BotonWhatsApp = ({texto, style}) => (
   </button>
 );
 
+// ── PDF con jsPDF (mismo motor validado en Verificar.jsx) ──────────
+let _jsPDFPromiseJunta = null;
+const cargarJsPDF = () => {
+  if (window.jspdf?.jsPDF) return Promise.resolve(window.jspdf.jsPDF);
+  if (_jsPDFPromiseJunta) return _jsPDFPromiseJunta;
+  _jsPDFPromiseJunta = new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    s.onload = () => resolve(window.jspdf.jsPDF);
+    s.onerror = () => reject(new Error("No se pudo cargar jsPDF"));
+    document.head.appendChild(s);
+  });
+  return _jsPDFPromiseJunta;
+};
+
+// Genera el PDF de una actividad (datos + listado de apuntados) y lo sube a Storage.
+// Devuelve la URL firmada, o null si falla.
+const generarYSubirFichaActividad = async (actividad, inscripciones, socios) => {
+  try{
+    const jsPDFCtor = await cargarJsPDF();
+    const doc = new jsPDFCtor({ unit: "mm", format: "a4" });
+    const M = 15, W = 210 - M * 2, PH = 297;
+    let y = M;
+    const check = (alto) => { if (y + alto > PH - M) { doc.addPage(); y = M; } };
+
+    doc.setFillColor(139,10,58);
+    doc.roundedRect(M, y, W, 20, 2, 2, "F");
+    doc.setTextColor(255,255,255);
+    doc.setFont("helvetica","bold"); doc.setFontSize(14);
+    doc.text("Peña Levantinista La Rana Mecánica", M+6, y+9);
+    doc.setFont("helvetica","normal"); doc.setFontSize(9);
+    doc.text("Ficha de actividad · Godella-Rocafort", M+6, y+15);
+    y += 28;
+
+    doc.setTextColor(139,10,58); doc.setFont("helvetica","bold"); doc.setFontSize(16);
+    doc.text(actividad.nombre, M, y); y += 9;
+    doc.setDrawColor(139,10,58); doc.line(M, y-6, M+W, y-6);
+
+    doc.setFont("helvetica","normal"); doc.setFontSize(10); doc.setTextColor(30,41,59);
+    const fmtFechaPdf=(f)=>{ if(!f) return "—"; const[yy,mm,dd]=f.split("-"); return `${dd}/${mm}/${yy}`; };
+    const lineas=[
+      `Fecha: ${actividad.fecha_texto||fmtFechaPdf(actividad.fecha)}`,
+      `Tipo: ${actividad.tipo}`,
+      `Precio: ${actividad.precio_socio>0?`${Number(actividad.precio_socio).toFixed(2)}€/persona`:"Gratuita"}`,
+      `Plazas: ${actividad.plazas||"—"}`,
+      actividad.responsable?`Responsable: ${actividad.responsable}`:null,
+    ].filter(Boolean);
+    lineas.forEach(l=>{ check(6); doc.text(l, M, y); y+=6; });
+    if(actividad.descripcion){
+      y+=2; check(10);
+      const desc=doc.splitTextToSize(actividad.descripcion, W);
+      desc.forEach(l=>{ check(5); doc.text(l, M, y); y+=5; });
+    }
+    y+=8;
+
+    const inscritos=inscripciones.filter(i=>i.actividad_id===actividad.id && i.estado!=="cancelada");
+    check(10);
+    doc.setFont("helvetica","bold"); doc.setFontSize(12); doc.setTextColor(139,10,58);
+    doc.text(`Apuntados (${inscritos.length})`, M, y);
+    doc.setDrawColor(139,10,58); doc.line(M, y+1.5, M+W, y+1.5);
+    y += 8;
+
+    let filaIdx=0;
+    inscritos.forEach(i=>{
+      const s=socios.find(x=>x.id===i.socio_id);
+      const nombre=s?`${s.nombre} ${s.apellidos}`:(i.nombre_invitado?`${i.nombre_invitado} (invitado)`:"—");
+      const alto=7;
+      check(alto);
+      if(filaIdx%2===0){ doc.setFillColor(248,250,252); doc.rect(M,y-4.5,W,alto,"F"); }
+      filaIdx++;
+      doc.setTextColor(30,41,59); doc.setFont("helvetica","normal"); doc.setFontSize(9.5);
+      doc.text(nombre, M+2, y);
+      doc.text(i.estado==="confirmada"?"Confirmada":"Pendiente", M+2+W*0.55, y);
+      if(actividad.precio_socio>0) doc.text(i.pagado?"Pagado":"Sin pagar", M+2+W*0.78, y);
+      y += alto;
+    });
+    if(inscritos.length===0){ doc.setFontSize(10); doc.setTextColor(148,163,184); doc.text("Todavía no se ha apuntado nadie.", M, y); y+=6; }
+
+    const nPaginas = doc.internal.getNumberOfPages();
+    for(let i=1;i<=nPaginas;i++){
+      doc.setPage(i);
+      doc.setFontSize(8); doc.setTextColor(148,163,184);
+      doc.text("Peña Levantinista La Rana Mecánica · Godella-Rocafort · penyaranamecanica@gmail.com", 105, 290, {align:"center"});
+    }
+
+    const blob = doc.output("blob");
+    const nombreArchivo = `ficha-${crypto.randomUUID()}.pdf`;
+    const { error: errSubida } = await supabase.storage.from("actividades").upload(nombreArchivo, blob, { contentType: "application/pdf" });
+    if (errSubida) { console.error("Error subiendo ficha de actividad:", errSubida); return null; }
+    const { data: firmada, error: errFirma } = await supabase.storage.from("actividades").createSignedUrl(nombreArchivo, 60*60*24*365);
+    if (errFirma) { console.error("Error firmando URL:", errFirma); return null; }
+    return firmada?.signedUrl || null;
+  }catch(e){ console.error("Error generando PDF de actividad:", e); return null; }
+};
+
 const enviarEmailJS = async (destinatario, asunto, mensaje) => {
   try{
     const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
@@ -1740,6 +1835,30 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
   const [socioAAnadir,setSocioAAnadir]=useState("");
   const [nombreInvitado,setNombreInvitado]=useState("");
   const [anadiendo,setAnadiendo]=useState(false);
+  const [generandoFicha,setGenerandoFicha]=useState(false);
+  const [fichaUrl,setFichaUrl]=useState(null);
+  const [emailEnvio,setEmailEnvio]=useState("");
+  const [enviandoEmailFicha,setEnviandoEmailFicha]=useState(false);
+
+  const generarFicha=async(actividad)=>{
+    setGenerandoFicha(true);
+    setFichaUrl(null);
+    const url=await generarYSubirFichaActividad(actividad,inscripciones,socios);
+    setGenerandoFicha(false);
+    if(!url){ ok("❌ No se pudo generar el PDF"); return; }
+    setFichaUrl(url);
+    ok("✅ Ficha PDF generada");
+  };
+
+  const enviarFichaPorEmail=async()=>{
+    if(!emailEnvio.trim()||!fichaUrl||!verInscritos) return;
+    setEnviandoEmailFicha(true);
+    const okEnvio=await enviarEmailJS(emailEnvio.trim(), `La Rana Mecánica · Ficha: ${verInscritos.nombre}`,
+      `Hola,\n\nAdjuntamos la ficha de la actividad "${verInscritos.nombre}":\n${fichaUrl}\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`);
+    setEnviandoEmailFicha(false);
+    if(okEnvio){ ok(`✅ Enviado a ${emailEnvio}`); setEmailEnvio(""); }
+    else ok("❌ Error al enviar el email");
+  };
 
   const anadirManual=async(actividadId)=>{
     if(!socioAAnadir) return;
@@ -1800,7 +1919,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
           {a.descripcion&&<p style={{fontSize:12,color:C.gris,marginBottom:8,fontStyle:"italic"}}>{a.descripcion}</p>}
           {a.precio_socio>0&&<div style={{fontSize:12,color:C.gris,marginBottom:8}}>💶 {fmt(a.precio_socio)}/persona · 🏟️ {a.plazas} plazas</div>}
           {a.aviso_total!=null&&<div style={{fontSize:11,color:C.muted,marginBottom:8}}>📧 aviso enviado a {a.aviso_enviados}/{a.aviso_total}</div>}
-          <button onClick={()=>{setVerInscritos(a);setSocioAAnadir("");setNombreInvitado("");}} style={{width:"100%",padding:"8px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:C.text,marginBottom:8}}>
+          <button onClick={()=>{setVerInscritos(a);setSocioAAnadir("");setNombreInvitado("");setFichaUrl(null);setEmailEnvio("");}} style={{width:"100%",padding:"8px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:C.text,marginBottom:8}}>
             👥 {inscritos.length} apuntados{a.precio_socio>0?` · ${pagados} pagado${pagados===1?"":"s"}`:""}
           </button>
           <div style={{display:"flex",gap:6,marginBottom:6}}>
@@ -1903,6 +2022,23 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
             </div>
           )}
           <div style={{fontSize:12,color:C.muted,textAlign:"right"}}>{inscritos.length} apuntados{verInscritos.plazas?` / ${verInscritos.plazas} plazas`:""}</div>
+
+          <div style={{marginTop:16,paddingTop:14,borderTop:`1px solid ${C.border}`}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>📄 Ficha en PDF</div>
+            {!fichaUrl?(
+              <Btn small onClick={()=>generarFicha(verInscritos)} disabled={generandoFicha}>{generandoFicha?"Generando...":"📄 Generar ficha PDF"}</Btn>
+            ):(<>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+                <a href={fichaUrl} target="_blank" rel="noreferrer" style={{padding:"7px 14px",background:C.grisLight,borderRadius:8,fontSize:12,fontWeight:600,color:C.text,textDecoration:"none"}}>📥 Ver / Descargar PDF</a>
+                <BotonWhatsApp texto={`🐸 Ficha de la actividad *${verInscritos.nombre}*:\n${fichaUrl}`}/>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <input value={emailEnvio} onChange={e=>setEmailEnvio(e.target.value)} type="email" placeholder="Enviar por email a..."
+                  style={{flex:1,padding:"7px 10px",borderRadius:7,border:`1px solid ${C.border}`,fontSize:13,fontFamily:"inherit"}}/>
+                <Btn small onClick={enviarFichaPorEmail} disabled={!emailEnvio.trim()||enviandoEmailFicha}>{enviandoEmailFicha?"...":"✉️ Enviar"}</Btn>
+              </div>
+            </>)}
+          </div>
         </div>);
       })()}
     </Modal>
