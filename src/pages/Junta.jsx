@@ -516,7 +516,7 @@ function CuentasPendientes({socios,setSocios}){
 // ══════════════════════════════════════════════════════════
 // PEÑISTAS
 // ══════════════════════════════════════════════════════════
-function Peñistas({socios,setSocios,cuotas,setCuotas}){
+function Peñistas({socios,setSocios,cuotas,setCuotas,actividades,inscripciones}){
   const [busqueda,setBusqueda]=useState("");
   const [filtro,setFiltro]=useState("activo");
   const [editando,setEditando]=useState(null);
@@ -690,6 +690,34 @@ function Peñistas({socios,setSocios,cuotas,setCuotas}){
                 </div>
               )}
             </>);
+          })()}
+        </div>
+
+        {/* Actividades en las que participa */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>📅 Actividades</div>
+          {(()=>{
+            const misInscripciones=(inscripciones||[]).filter(i=>i.socio_id===editando.id&&i.estado!=="cancelada");
+            if(misInscripciones.length===0) return <p style={{fontSize:12,color:C.muted}}>No participa en ninguna actividad todavía.</p>;
+            const filas=misInscripciones.map(i=>({
+              i, a:(actividades||[]).find(x=>x.id===i.actividad_id),
+            })).sort((x,y)=>(y.a?.fecha||"").localeCompare(x.a?.fecha||""));
+            return(
+              <div style={{border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
+                {filas.map(({i,a},idx)=>(
+                  <div key={i.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 12px",borderBottom:idx<filas.length-1?`1px solid ${C.border}`:"none",background:idx%2===0?C.blanco:"#fafafa"}}>
+                    <div>
+                      <span style={{fontSize:12,color:C.text,fontWeight:600}}>{a?.nombre||"—"}</span>
+                      <span style={{fontSize:11,color:C.muted,marginLeft:6}}>{a?.fecha_texto||fmtFecha(a?.fecha)}</span>
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <Pill text={i.estado==="confirmada"?"✅ Confirmada":"⏳ Pendiente"} color={i.estado==="confirmada"?C.verde:C.oro} bg={i.estado==="confirmada"?C.verdeLight:C.oroLight}/>
+                      {a?.precio_socio>0&&<Pill text={i.pagado?`✓ ${fmt(a.precio_socio)}`:"Sin pagar"} color={i.pagado?C.verde:C.rojo} bg={i.pagado?C.verdeLight:C.rojoLight}/>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
           })()}
         </div>
         <div style={{marginBottom:10}}>
@@ -2748,7 +2776,7 @@ export default function Junta(){
   const renderTab=()=>{
     switch(tab){
       case "dashboard":     return <Dashboard socios={socios} cuotas={cuotas} actividades={actividades} solicitudes={solicitudes} verificaciones={verificaciones} setTab={setTab}/>;
-      case "peñistas":      return <Peñistas socios={socios} setSocios={setSocios} cuotas={cuotas} setCuotas={setCuotas}/>;
+      case "peñistas":      return <Peñistas socios={socios} setSocios={setSocios} cuotas={cuotas} setCuotas={setCuotas} actividades={actividades} inscripciones={inscripciones}/>;
       case "cuentas":       return <CuentasPendientes socios={socios} setSocios={setSocios}/>;
       case "consentimientos": return <Consentimientos socios={socios} setSocios={setSocios}/>;
       case "solicitudes":   return <Solicitudes solicitudes={solicitudes} setSolicitudes={setSolicitudes} socios={socios} setSocios={setSocios} setCuotas={setCuotas}/>;
