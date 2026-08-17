@@ -216,6 +216,7 @@ const TABS = [
   {id:"actas",        label:"Actas",         icon:"📜"},
   {id:"auditoria",    label:"Auditoría",     icon:"🔍"},
   {id:"tesoreria",    label:"Tesorería",     icon:"📒"},
+  {id:"informes",     label:"Informes",      icon:"📊"},
   {id:"configuracion",label:"Config.",       icon:"⚙️"},
 ];
 
@@ -2314,6 +2315,142 @@ function SeccionBackup(){
 }
 
 // ══════════════════════════════════════════════════════════
+// INFORMES
+// ══════════════════════════════════════════════════════════
+function Informes({socios,cuotas,loteria,actividades,inscripciones,ejercicios,movimientos}){
+  const [notif,setNotif]=useState(null);
+  const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
+  const getSocio=(id)=>socios.find(s=>s.id===id);
+  const nombreSocio=(id)=>{const s=getSocio(id);return s?`${s.nombre} ${s.apellidos}`:"—";};
+
+  const descargar=(wb,nombre)=>{
+    XLSX.writeFile(wb,`${nombre}_rana_mecanica_${hoy}.xlsx`);
+    ok(`✅ Descargado: ${nombre}`);
+  };
+
+  const exportarPenistas=()=>{
+    const activos=socios.filter(s=>s.estado==="activo");
+    const data=activos.map(s=>({
+      "Nº Socio":s.numero,"Nombre":s.nombre,"Apellidos":s.apellidos,"DNI":s.dni||"",
+      "Fecha Nac.":s.fecha_nac||"","Teléfono":s.telefono||"","Email":s.email||"","Municipio":s.municipio||"",
+      "Tipo":s.tipo,"Cargo":s.cargo||"","Estado":s.estado,
+      "RGPD":s.rgpd?"Sí":"No","Foto interna":s.consent_foto_interna?"Sí":"No","Foto RRSS":s.consent_foto_rrss?"Sí":"No",
+      "Foto web":s.consent_foto_web?"Sí":"No","Foto Levante":s.consent_foto_levante?"Sí":"No","Promo peña":s.consent_promo_pena?"Sí":"No",
+      "Patrocinadores":s.consent_patrocinadores?"Sí":"No","WhatsApp":s.consent_whatsapp?"Sí":"No",
+      "Tiene acciones":s.tiene_acciones?"Sí":"No","Nº acciones":s.num_acciones||"","Abonado":s.es_abonado?"Sí":"No","Nº abonado":s.num_abonado||"",
+    }));
+    const ws=XLSX.utils.json_to_sheet(data);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Censo");
+    descargar(wb,"censo_penistas");
+  };
+
+  const exportarActividades=()=>{
+    const resumen=actividades.map(a=>{
+      const insc=inscripciones.filter(i=>i.actividad_id===a.id&&i.estado!=="cancelada");
+      return{
+        "Actividad":a.nombre,"Fecha":a.fecha||"","Tipo":a.tipo,"Precio socio":a.precio_socio||0,"Plazas":a.plazas||"",
+        "Inscritos":insc.length,"Confirmados":insc.filter(i=>i.estado==="confirmada").length,
+        "Pagados":insc.filter(i=>i.pagado).length,"Ingreso generado":insc.filter(i=>i.pagado).length*(a.precio_socio||0),
+      };
+    });
+    const detalle=inscripciones.filter(i=>i.estado!=="cancelada").map(i=>{
+      const a=actividades.find(x=>x.id===i.actividad_id);
+      return{
+        "Actividad":a?.nombre||"—","Socio":nombreSocio(i.socio_id),"Nº Socio":getSocio(i.socio_id)?.numero||"",
+        "Estado":i.estado,"Pagado":i.pagado?"Sí":"No","Fecha pago":i.fecha_pago||"",
+      };
+    });
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(resumen),"Resumen actividades");
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(detalle),"Detalle inscritos");
+    descargar(wb,"actividades");
+  };
+
+  const exportarCuotas=()=>{
+    const data=cuotas.map(c=>({
+      "Socio":nombreSocio(c.socio_id),"Nº Socio":getSocio(c.socio_id)?.numero||"",
+      "Temporada":c.temporada,"Categoría":c.categoria,"Importe":Number(c.importe),
+      "Pagado":c.pagado?"Sí":"No","Fecha pago":c.fecha_pago||"","Forma pago":c.forma_pago||"",
+    }));
+    const ws=XLSX.utils.json_to_sheet(data);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Cuotas");
+    descargar(wb,"cuotas");
+  };
+
+  const exportarPresupuesto=()=>{
+    const wb=XLSX.utils.book_new();
+    ejercicios.forEach(ej=>{
+      const movs=movimientos.filter(m=>m.ejercicio_id===ej.id);
+      const porCategoria={};
+      movs.forEach(m=>{
+        const key=`${m.tipo}|${m.categoria||"Sin categoría"}`;
+        porCategoria[key]=(porCategoria[key]||0)+Number(m.importe);
+      });
+      const data=Object.entries(porCategoria).map(([key,total])=>{
+        const [tipo,categoria]=key.split("|");
+        return {"Tipo":tipo==="ingreso"?"Ingreso":"Gasto","Categoría":categoria,"Total":total};
+      });
+      const ingresos=movs.filter(m=>m.tipo==="ingreso").reduce((a,m)=>a+Number(m.importe),0);
+      const gastos=movs.filter(m=>m.tipo==="gasto").reduce((a,m)=>a+Number(m.importe),0);
+      data.push({"Tipo":"","Categoría":"RESULTADO",Total:ingresos-gastos});
+      const nombreHoja=ej.nombre.replace(/[\\/:*?[\]]/g,"-").slice(0,31);
+      XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(data),nombreHoja);
+    });
+    const detalle=movimientos.map(m=>{
+      const ejNombre=ejercicios.find(e=>e.id===m.ejercicio_id)?.nombre||"—";
+      return{"Ejercicio":ejNombre,"Tipo":m.tipo,"Categoría":m.categoria,"Concepto":m.concepto,"Importe":Number(m.importe),"Fecha":m.fecha,"Observaciones":m.observaciones||""};
+    });
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(detalle),"Detalle movimientos");
+    descargar(wb,"presupuesto_tesoreria");
+  };
+
+  const exportarLoteria=()=>{
+    const data=loteria.map(l=>{
+      const vendidos=Math.max(0,(Number(l.entregados)||0)-(Number(l.devueltos)||0));
+      return{
+        "Socio":nombreSocio(l.socio_id),"Nº Socio":getSocio(l.socio_id)?.numero||"",
+        "Concepto":l.concepto,"Entregados":l.entregados||0,"Devueltos":l.devueltos||0,"Vendidos":vendidos,
+        "Precio base":Number(l.precio_base||0),"Recargo":Number(l.recargo||0),
+        "Importe":l.pagado?Number(l.importe_total||0):vendidos*((Number(l.precio_base)||0)+(Number(l.recargo)||0)),
+        "Liquidado":l.pagado?"Sí":"No","Fecha liquidación":l.fecha_pago||"",
+      };
+    });
+    const ws=XLSX.utils.json_to_sheet(data);
+    const wb=XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb,ws,"Lotería");
+    descargar(wb,"loteria");
+  };
+
+  const informes=[
+    {icon:"👥",titulo:"Censo de peñistas",desc:"Datos completos y consentimientos de todos los activos",fn:exportarPenistas},
+    {icon:"📅",titulo:"Actividades",desc:"Resumen por actividad + detalle de quién se apuntó a cada una",fn:exportarActividades},
+    {icon:"💶",titulo:"Cuotas",desc:"Estado de pago de toda la temporada, socio por socio",fn:exportarCuotas},
+    {icon:"📒",titulo:"Presupuesto / Tesorería",desc:"Ingresos y gastos por categoría, una hoja por ejercicio",fn:exportarPresupuesto},
+    {icon:"🎟️",titulo:"Lotería",desc:"Reparto, devolución y liquidación por persona",fn:exportarLoteria},
+  ];
+
+  return(<div>
+    {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.verde,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14}}>{notif}</div>}
+    <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark,marginBottom:6}}>📊 Informes</h2>
+    <p style={{fontSize:13,color:C.muted,marginBottom:20}}>Descarga los datos en Excel para hacer seguimiento fuera de la app.</p>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+      {informes.map(inf=>(
+        <Card key={inf.titulo} style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{display:"flex",alignItems:"center",gap:12}}>
+            <span style={{fontSize:26}}>{inf.icon}</span>
+            <div style={{fontWeight:700,fontSize:15,color:C.text}}>{inf.titulo}</div>
+          </div>
+          <p style={{fontSize:12,color:C.muted,margin:0,flex:1}}>{inf.desc}</p>
+          <Btn small onClick={inf.fn}>📥 Descargar Excel</Btn>
+        </Card>
+      ))}
+    </div>
+  </div>);
+}
+
+// ══════════════════════════════════════════════════════════
 // CONFIGURACIÓN
 // ══════════════════════════════════════════════════════════
 function Configuracion({tarifas,setTarifas}){
@@ -2505,6 +2642,7 @@ export default function Junta(){
       case "auditoria":     return <Auditoria/>;
       case "noticias":      return <Noticias noticias={noticias} setNoticias={setNoticias} socios={socios}/>;
       case "tesoreria":     return <Tesoreria ejercicios={ejercicios} setEjercicios={setEjercicios} movimientos={movimientos} setMovimientos={setMovimientos}/>;
+      case "informes":      return <Informes socios={socios} cuotas={cuotas} loteria={loteria} actividades={actividades} inscripciones={inscripciones} ejercicios={ejercicios} movimientos={movimientos}/>;
       case "configuracion": return <Configuracion tarifas={tarifas} setTarifas={setTarifas}/>;
       default: return null;
     }
