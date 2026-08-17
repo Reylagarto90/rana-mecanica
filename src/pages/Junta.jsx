@@ -973,6 +973,7 @@ function Verificaciones({verificaciones,setVerificaciones,socios,setSocios}){
 // ══════════════════════════════════════════════════════════
 function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
   const [modal,setModal]=useState(false);
+  const [modalMasivo,setModalMasivo]=useState(false);
   const [filtro,setFiltro]=useState("pendientes");
   const [form,setForm]=useState({socio_id:"",temporada:TEMPORADA_ACTUAL,categoria:"nueva_alta",importe:"",pagado:false,fecha_pago:"",forma_pago:"Bizum"});
   const [notif,setNotif]=useState(null);
@@ -991,6 +992,7 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
   const pendiente=cuotas.filter(c=>!c.pagado).reduce((a,c)=>a+Number(c.importe),0);
 
   const [procesando,setProcesando]=useState(null);
+  const [busquedaMasiva,setBusquedaMasiva]=useState("");
 
   // Reutilizable: crea el ingreso en Tesorería para una cuota pagada. Devuelve el id del movimiento o null.
   const crearIngresoCuota=async(c)=>{
@@ -1059,11 +1061,58 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
     ok("🗑️ Cuota eliminada");
   };
 
+  // Tarifa automática por socio: honorífico si consta como tal, si no según edad
+  const tarifaParaSocio=(s)=>{
+    if((s.cargo||"").toLowerCase().includes("honor")) return "honorifico";
+    const edad=calcularEdad(s.fecha_nac);
+    if(edad!=null){
+      if(edad<=3) return "infantil_0_3";
+      if(edad<18) return "infantil_mayor";
+      return "renovacion";
+    }
+    return s.tipo==="infantil" ? "infantil_mayor" : "renovacion";
+  };
+
+  const [temporadaMasiva,setTemporadaMasiva]=useState(TEMPORADA_ACTUAL);
+  const [seleccionMasiva,setSeleccionMasiva]=useState(new Set());
+  const [generando,setGenerando]=useState(false);
+
+  const abrirMasivo=()=>{
+    const activos=socios.filter(s=>s.estado==="activo");
+    const sinCuotaEsteAnio=activos.filter(s=>!cuotas.some(c=>c.socio_id===s.id&&c.temporada===TEMPORADA_ACTUAL));
+    setTemporadaMasiva(TEMPORADA_ACTUAL);
+    setSeleccionMasiva(new Set(sinCuotaEsteAnio.map(s=>s.id)));
+    setModalMasivo(true);
+  };
+
+  const generarMasivo=async()=>{
+    if(seleccionMasiva.size===0) return;
+    setGenerando(true);
+    const filas=[...seleccionMasiva].map(id=>{
+      const s=getSocio(id);
+      const clave=tarifaParaSocio(s);
+      const tarifa=tarifas.find(t=>t.clave===clave);
+      return {
+        socio_id:id, temporada:temporadaMasiva, categoria:clave,
+        importe:tarifa?tarifa.importe:0, pagado:false, fecha_pago:null, forma_pago:null,
+      };
+    });
+    const {data,error}=await supabase.from("cuotas").insert(filas).select();
+    setGenerando(false);
+    if(error){ok("❌ Error al generar las cuotas");return;}
+    setCuotas(p=>[...p,...data]);
+    setModalMasivo(false);
+    ok(`✅ ${data.length} cuotas generadas para ${temporadaMasiva}`);
+  };
+
   return(<div>
     {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.verde,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14}}>{notif}</div>}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:12}}>
       <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark}}>💶 Cuotas · {TEMPORADA_ACTUAL}</h2>
-      <Btn onClick={()=>setModal(true)}>+ Registrar cuota</Btn>
+      <div style={{display:"flex",gap:8}}>
+        <Btn outline onClick={abrirMasivo}>🧾 Generar cuotas de temporada</Btn>
+        <Btn onClick={()=>setModal(true)}>+ Registrar cuota</Btn>
+      </div>
     </div>
     <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}>
       <KPI label="Cobrado" value={fmt(cobradas)} color={C.verde} icon="✅"/>
@@ -1127,6 +1176,38 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
       <div style={{display:"flex",gap:10}}>
         <Btn outline onClick={()=>setModal(false)} style={{flex:1}}>Cancelar</Btn>
         <Btn onClick={guardar} style={{flex:1}}>Guardar</Btn>
+      </div>
+    </Modal>
+
+    <Modal open={modalMasivo} onClose={()=>setModalMasivo(false)} title="🧾 Generar cuotas de temporada">
+      <Input label="Temporada" value={temporadaMasiva} onChange={setTemporadaMasiva}/>
+      <p style={{fontSize:12,color:C.muted,marginBottom:10}}>La tarifa se asigna sola por cada socio (General/Niños/Bebé según su edad, u Honorífico si consta como tal). Por defecto vienen marcados los activos que aún no tienen cuota de {TEMPORADA_ACTUAL}.</p>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,gap:8}}>
+        <input value={busquedaMasiva} onChange={e=>setBusquedaMasiva(e.target.value)} placeholder="🔍 Buscar..."
+          style={{flex:1,padding:"7px 10px",borderRadius:6,border:`1px solid ${C.border}`,fontSize:12,outline:"none",fontFamily:"inherit"}}/>
+        <button onClick={()=>{
+            const activos=socios.filter(s=>s.estado==="activo");
+            setSeleccionMasiva(seleccionMasiva.size===activos.length?new Set():new Set(activos.map(s=>s.id)));
+          }} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:12,fontWeight:600,fontFamily:"inherit",whiteSpace:"nowrap"}}>
+          Todos/Ninguno
+        </button>
+      </div>
+      <div style={{fontSize:11,color:C.muted,marginBottom:6}}>{seleccionMasiva.size} seleccionados</div>
+      <div style={{maxHeight:220,overflowY:"auto",border:`1.5px solid ${C.border}`,borderRadius:8,padding:8,marginBottom:16}}>
+        {socios.filter(s=>s.estado==="activo").filter(s=>`${s.nombre} ${s.apellidos}`.toLowerCase().includes(busquedaMasiva.toLowerCase())).map(s=>{
+          const yaExiste=cuotas.some(c=>c.socio_id===s.id&&c.temporada===temporadaMasiva);
+          return(
+            <label key={s.id} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 6px",fontSize:13,cursor:"pointer"}}>
+              <input type="checkbox" checked={seleccionMasiva.has(s.id)} onChange={()=>setSeleccionMasiva(prev=>{const n=new Set(prev); n.has(s.id)?n.delete(s.id):n.add(s.id); return n;})} style={{accentColor:C.verde}}/>
+              {s.nombre} {s.apellidos} <span style={{color:C.muted,fontSize:11}}>({s.numero}) · {tarifaParaSocio(s)}</span>
+              {yaExiste&&<span style={{color:C.oro,fontSize:11}}>· ya tiene cuota {temporadaMasiva}</span>}
+            </label>
+          );
+        })}
+      </div>
+      <div style={{display:"flex",gap:10}}>
+        <Btn outline onClick={()=>setModalMasivo(false)} style={{flex:1}}>Cancelar</Btn>
+        <Btn onClick={generarMasivo} style={{flex:1}} disabled={generando||seleccionMasiva.size===0}>{generando?"Generando...":`Generar ${seleccionMasiva.size} cuotas`}</Btn>
       </div>
     </Modal>
   </div>);
