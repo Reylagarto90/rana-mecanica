@@ -2761,6 +2761,7 @@ function SeccionBackup(){
 // ══════════════════════════════════════════════════════════
 function Informes({socios,cuotas,loteria,actividades,inscripciones,ejercicios,movimientos}){
   const [notif,setNotif]=useState(null);
+  const [generandoPdf,setGenerandoPdf]=useState(null);
   const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
   const getSocio=(id)=>socios.find(s=>s.id===id);
   const nombreSocio=(id)=>{const s=getSocio(id);return s?`${s.nombre} ${s.apellidos}`:"—";};
@@ -2768,6 +2769,60 @@ function Informes({socios,cuotas,loteria,actividades,inscripciones,ejercicios,mo
   const descargar=(wb,nombre)=>{
     XLSX.writeFile(wb,`${nombre}_rana_mecanica_${hoy}.xlsx`);
     ok(`✅ Descargado: ${nombre}`);
+  };
+
+  // Generador genérico de PDF en forma de tabla, con cabecera de club y paginación automática
+  const generarTablaPDF = async (titulo, columnas, filas, nombreArchivo) => {
+    setGenerandoPdf(nombreArchivo);
+    const jsPDFCtor = await cargarJsPDF();
+    const doc = new jsPDFCtor({ unit: "mm", format: "a4", orientation: columnas.length>5?"landscape":"portrait" });
+    const M = 12;
+    const PW = doc.internal.pageSize.getWidth(), PH = doc.internal.pageSize.getHeight();
+    const W = PW - M*2;
+    let y = M;
+
+    const cabecera = () => {
+      doc.setFillColor(139,10,58);
+      doc.roundedRect(M, y, W, 14, 2, 2, "F");
+      doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(12);
+      doc.text("Peña Levantinista La Rana Mecánica", M+5, y+6);
+      doc.setFont("helvetica","normal"); doc.setFontSize(9);
+      doc.text(titulo, M+5, y+11);
+      y += 20;
+    };
+    cabecera();
+
+    const anchoCol = W/columnas.length;
+    const filaHeader = () => {
+      doc.setFillColor(139,10,58);
+      doc.rect(M, y-4.5, W, 7, "F");
+      doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(8.5);
+      columnas.forEach((c,i)=>doc.text(String(c), M+3+i*anchoCol, y));
+      y += 6;
+    };
+    filaHeader();
+
+    doc.setFont("helvetica","normal"); doc.setFontSize(8);
+    filas.forEach((fila,idx)=>{
+      if(y > PH - M - 10){ doc.addPage(); y = M; cabecera(); filaHeader(); }
+      if(idx%2===0){ doc.setFillColor(248,250,252); doc.rect(M, y-4, W, 6, "F"); }
+      doc.setTextColor(30,41,59);
+      fila.forEach((valor,i)=>{
+        const texto=String(valor??"");
+        doc.text(texto.length>28?texto.slice(0,27)+"…":texto, M+3+i*anchoCol, y);
+      });
+      y += 6;
+    });
+
+    const nPaginas = doc.internal.getNumberOfPages();
+    for(let i=1;i<=nPaginas;i++){
+      doc.setPage(i);
+      doc.setFontSize(7); doc.setTextColor(148,163,184);
+      doc.text(`Generado el ${new Date().toLocaleDateString("es-ES")} · Página ${i}/${nPaginas}`, PW/2, PH-6, {align:"center"});
+    }
+    doc.save(`${nombreArchivo}_rana_mecanica_${hoy}.pdf`);
+    setGenerandoPdf(null);
+    ok(`✅ PDF descargado: ${nombreArchivo}`);
   };
 
   const exportarPenistas=()=>{
@@ -2866,18 +2921,170 @@ function Informes({socios,cuotas,loteria,actividades,inscripciones,ejercicios,mo
     descargar(wb,"loteria");
   };
 
+  // ── Versiones en PDF (tabla) de los mismos informes ──────────
+  const pdfPenistas=()=>{
+    const activos=socios.filter(s=>s.estado==="activo");
+    const filas=activos.map(s=>[s.numero,`${s.nombre} ${s.apellidos}`,s.telefono||"",s.municipio||"",s.tipo,s.rgpd?"Sí":"No"]);
+    generarTablaPDF("Censo de peñistas activos",["Nº","Nombre","Teléfono","Municipio","Tipo","RGPD"],filas,"censo_penistas");
+  };
+
+  const pdfCuotas=()=>{
+    const filas=cuotas.map(c=>[nombreSocio(c.socio_id),c.temporada,c.categoria,fmt(c.importe),c.pagado?"Sí":"No",c.fecha_pago?fmtFecha(c.fecha_pago):"—"]);
+    generarTablaPDF("Cuotas de la temporada",["Socio","Temporada","Categoría","Importe","Pagado","Fecha pago"],filas,"cuotas");
+  };
+
+  const pdfLoteria=()=>{
+    const filas=loteria.map(l=>{
+      const vendidos=Math.max(0,(Number(l.entregados)||0)-(Number(l.devueltos)||0));
+      const importe=l.pagado?Number(l.importe_total||0):vendidos*((Number(l.precio_base)||0)+(Number(l.recargo)||0));
+      return [nombreSocio(l.socio_id),l.concepto,l.entregados||0,l.devueltos||0,vendidos,fmt(importe),l.pagado?"Sí":"No"];
+    });
+    generarTablaPDF("Lotería",["Socio","Concepto","Entreg.","Devuel.","Vend.","Importe","Liquidado"],filas,"loteria");
+  };
+
+  const pdfActividades=()=>{
+    const filas=actividades.map(a=>{
+      const insc=inscripciones.filter(i=>i.actividad_id===a.id&&i.estado!=="cancelada");
+      return [a.nombre,a.fecha?fmtFecha(a.fecha):"—",a.tipo,fmt(a.precio_socio||0),insc.length,insc.filter(i=>i.estado==="confirmada").length,insc.filter(i=>i.pagado).length];
+    });
+    generarTablaPDF("Actividades",["Actividad","Fecha","Tipo","Precio","Inscritos","Confirmados","Pagados"],filas,"actividades");
+  };
+
+  const pdfPresupuesto=async()=>{
+    setGenerandoPdf("presupuesto");
+    const jsPDFCtor = await cargarJsPDF();
+    const doc = new jsPDFCtor({ unit: "mm", format: "a4" });
+    const M = 15, W = 210 - M*2, PH = 297;
+    let y = M;
+
+    const cabecera=(subtitulo)=>{
+      doc.setFillColor(139,10,58);
+      doc.roundedRect(M, y, W, 16, 2, 2, "F");
+      doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(13);
+      doc.text("Peña Levantinista La Rana Mecánica", M+5, y+7);
+      doc.setFont("helvetica","normal"); doc.setFontSize(9);
+      doc.text(subtitulo, M+5, y+12.5);
+      y += 22;
+    };
+
+    const tituloSeccion=(t)=>{
+      doc.setTextColor(139,10,58); doc.setFont("helvetica","bold"); doc.setFontSize(12);
+      doc.text(t, M, y);
+      doc.setDrawColor(139,10,58); doc.line(M, y+1.5, M+W, y+1.5);
+      y += 8;
+    };
+
+    const filaTabla=(cols, anchos, opts={})=>{
+      if(y > PH - M - 10){ doc.addPage(); y = M; }
+      if(opts.header){
+        doc.setFillColor(139,10,58); doc.rect(M, y-4.5, W, 7, "F");
+        doc.setTextColor(255,255,255); doc.setFont("helvetica","bold");
+      } else {
+        if(opts.zebra){ doc.setFillColor(248,250,252); doc.rect(M, y-4, W, 6, "F"); }
+        doc.setTextColor(opts.bold?139:30, opts.bold?10:41, opts.bold?58:59);
+        doc.setFont("helvetica", opts.bold?"bold":"normal");
+      }
+      doc.setFontSize(9.5);
+      let x=M+3;
+      cols.forEach((c,i)=>{ doc.text(String(c), x, y); x+=anchos[i]; });
+      y += opts.header?6:6;
+    };
+
+    // ── Página 1: Resumen general de todas las temporadas ──
+    cabecera("Presupuesto · Resumen general por temporada");
+    tituloSeccion("Resumen");
+    const anchosResumen=[W*0.35,W*0.2,W*0.2,W*0.2];
+    filaTabla(["Temporada","Ingresos","Gastos","Resultado"],anchosResumen,{header:true});
+    ejercicios.forEach((ej,idx)=>{
+      const movs=movimientos.filter(m=>m.ejercicio_id===ej.id);
+      const ing=movs.filter(m=>m.tipo==="ingreso").reduce((a,m)=>a+Number(m.importe),0);
+      const gas=movs.filter(m=>m.tipo==="gasto").reduce((a,m)=>a+Number(m.importe),0);
+      filaTabla([ej.nombre,fmt(ing),fmt(gas),fmt(ing-gas)],anchosResumen,{zebra:idx%2===0});
+    });
+    const totalIng=movimientos.filter(m=>m.tipo==="ingreso").reduce((a,m)=>a+Number(m.importe),0);
+    const totalGas=movimientos.filter(m=>m.tipo==="gasto").reduce((a,m)=>a+Number(m.importe),0);
+    y+=4;
+    filaTabla(["TOTAL GENERAL",fmt(totalIng),fmt(totalGas),fmt(totalIng-totalGas)],anchosResumen,{bold:true});
+
+    // ── Página 2: Desglose GENERAL (todas las temporadas juntas) por categoría ──
+    doc.addPage(); y = M;
+    cabecera("Desglose general · Todas las temporadas");
+    const anchosCatGeneral=[W*0.6,W*0.4];
+
+    tituloSeccion("Ingresos por categoría (acumulado)");
+    filaTabla(["Categoría","Total"],anchosCatGeneral,{header:true});
+    const ingPorCatGeneral={};
+    movimientos.filter(m=>m.tipo==="ingreso").forEach(m=>{ ingPorCatGeneral[m.categoria||"Sin categoría"]=(ingPorCatGeneral[m.categoria||"Sin categoría"]||0)+Number(m.importe); });
+    const catsIngGeneral=Object.entries(ingPorCatGeneral).sort((a,b)=>b[1]-a[1]);
+    if(catsIngGeneral.length===0){ doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(148,163,184); doc.text("Sin ingresos registrados.",M+3,y); y+=6; }
+    catsIngGeneral.forEach(([cat,total],idx)=>filaTabla([cat,fmt(total)],anchosCatGeneral,{zebra:idx%2===0}));
+    filaTabla(["TOTAL INGRESOS",fmt(totalIng)],anchosCatGeneral,{bold:true});
+    y+=8;
+
+    tituloSeccion("Gastos por categoría (acumulado)");
+    filaTabla(["Categoría","Total"],anchosCatGeneral,{header:true});
+    const gasPorCatGeneral={};
+    movimientos.filter(m=>m.tipo==="gasto").forEach(m=>{ gasPorCatGeneral[m.categoria||"Sin categoría"]=(gasPorCatGeneral[m.categoria||"Sin categoría"]||0)+Number(m.importe); });
+    const catsGasGeneral=Object.entries(gasPorCatGeneral).sort((a,b)=>b[1]-a[1]);
+    if(catsGasGeneral.length===0){ doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(148,163,184); doc.text("Sin gastos registrados.",M+3,y); y+=6; }
+    catsGasGeneral.forEach(([cat,total],idx)=>filaTabla([cat,fmt(total)],anchosCatGeneral,{zebra:idx%2===0}));
+    filaTabla(["TOTAL GASTOS",fmt(totalGas)],anchosCatGeneral,{bold:true});
+
+    // ── Páginas siguientes: desglose por temporada ──
+    ejercicios.forEach(ej=>{
+      doc.addPage(); y = M;
+      cabecera(`Desglose · ${ej.nombre}`);
+      const movs=movimientos.filter(m=>m.ejercicio_id===ej.id);
+
+      tituloSeccion("Ingresos por categoría");
+      const anchosCat=[W*0.6,W*0.4];
+      filaTabla(["Categoría","Total"],anchosCat,{header:true});
+      const ingPorCat={};
+      movs.filter(m=>m.tipo==="ingreso").forEach(m=>{ ingPorCat[m.categoria||"Sin categoría"]=(ingPorCat[m.categoria||"Sin categoría"]||0)+Number(m.importe); });
+      const catsIng=Object.entries(ingPorCat).sort((a,b)=>b[1]-a[1]);
+      if(catsIng.length===0){ doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(148,163,184); doc.text("Sin ingresos registrados.",M+3,y); y+=6; }
+      catsIng.forEach(([cat,total],idx)=>filaTabla([cat,fmt(total)],anchosCat,{zebra:idx%2===0}));
+      const totalIngEj=catsIng.reduce((a,[,t])=>a+t,0);
+      filaTabla(["TOTAL INGRESOS",fmt(totalIngEj)],anchosCat,{bold:true});
+      y+=8;
+
+      tituloSeccion("Gastos por categoría");
+      filaTabla(["Categoría","Total"],anchosCat,{header:true});
+      const gasPorCat={};
+      movs.filter(m=>m.tipo==="gasto").forEach(m=>{ gasPorCat[m.categoria||"Sin categoría"]=(gasPorCat[m.categoria||"Sin categoría"]||0)+Number(m.importe); });
+      const catsGas=Object.entries(gasPorCat).sort((a,b)=>b[1]-a[1]);
+      if(catsGas.length===0){ doc.setFont("helvetica","normal"); doc.setFontSize(9); doc.setTextColor(148,163,184); doc.text("Sin gastos registrados.",M+3,y); y+=6; }
+      catsGas.forEach(([cat,total],idx)=>filaTabla([cat,fmt(total)],anchosCat,{zebra:idx%2===0}));
+      const totalGasEj=catsGas.reduce((a,[,t])=>a+t,0);
+      filaTabla(["TOTAL GASTOS",fmt(totalGasEj)],anchosCat,{bold:true});
+      y+=8;
+
+      tituloSeccion(`Resultado del ejercicio: ${fmt(totalIngEj-totalGasEj)}`);
+    });
+
+    const nPaginas = doc.internal.getNumberOfPages();
+    for(let i=1;i<=nPaginas;i++){
+      doc.setPage(i);
+      doc.setFontSize(7); doc.setTextColor(148,163,184);
+      doc.text(`Generado el ${new Date().toLocaleDateString("es-ES")} · Página ${i}/${nPaginas}`, 105, PH-8, {align:"center"});
+    }
+    doc.save(`presupuesto_rana_mecanica_${hoy}.pdf`);
+    setGenerandoPdf(null);
+    ok("✅ PDF descargado: presupuesto");
+  };
+
   const informes=[
-    {icon:"👥",titulo:"Censo de peñistas",desc:"Datos completos y consentimientos de todos los activos",fn:exportarPenistas},
-    {icon:"📅",titulo:"Actividades",desc:"Resumen por actividad + detalle de quién se apuntó a cada una",fn:exportarActividades},
-    {icon:"💶",titulo:"Cuotas",desc:"Estado de pago de toda la temporada, socio por socio",fn:exportarCuotas},
-    {icon:"📒",titulo:"Presupuesto / Tesorería",desc:"Ingresos y gastos por categoría, una hoja por ejercicio",fn:exportarPresupuesto},
-    {icon:"🎟️",titulo:"Lotería",desc:"Reparto, devolución y liquidación por persona",fn:exportarLoteria},
+    {icon:"👥",titulo:"Censo de peñistas",desc:"Datos completos y consentimientos de todos los activos",fn:exportarPenistas,fnPdf:pdfPenistas},
+    {icon:"📅",titulo:"Actividades",desc:"Resumen por actividad + detalle de quién se apuntó a cada una",fn:exportarActividades,fnPdf:pdfActividades},
+    {icon:"💶",titulo:"Cuotas",desc:"Estado de pago de toda la temporada, socio por socio",fn:exportarCuotas,fnPdf:pdfCuotas},
+    {icon:"📒",titulo:"Presupuesto / Tesorería",desc:"Ingresos y gastos por categoría, una hoja por ejercicio",fn:exportarPresupuesto,fnPdf:pdfPresupuesto},
+    {icon:"🎟️",titulo:"Lotería",desc:"Reparto, devolución y liquidación por persona",fn:exportarLoteria,fnPdf:pdfLoteria},
   ];
 
   return(<div>
     {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.verde,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14}}>{notif}</div>}
     <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark,marginBottom:6}}>📊 Informes</h2>
-    <p style={{fontSize:13,color:C.muted,marginBottom:20}}>Descarga los datos en Excel para hacer seguimiento fuera de la app.</p>
+    <p style={{fontSize:13,color:C.muted,marginBottom:20}}>Descarga los datos en Excel o PDF para hacer seguimiento fuera de la app.</p>
     <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
       {informes.map(inf=>(
         <Card key={inf.titulo} style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -2886,7 +3093,10 @@ function Informes({socios,cuotas,loteria,actividades,inscripciones,ejercicios,mo
             <div style={{fontWeight:700,fontSize:15,color:C.text}}>{inf.titulo}</div>
           </div>
           <p style={{fontSize:12,color:C.muted,margin:0,flex:1}}>{inf.desc}</p>
-          <Btn small onClick={inf.fn}>📥 Descargar Excel</Btn>
+          <div style={{display:"flex",gap:8}}>
+            <Btn small onClick={inf.fn} style={{flex:1}}>📥 Excel</Btn>
+            {inf.fnPdf&&<Btn small outline onClick={inf.fnPdf} disabled={generandoPdf!==null} style={{flex:1}}>📄 PDF</Btn>}
+          </div>
         </Card>
       ))}
     </div>
