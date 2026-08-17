@@ -61,6 +61,20 @@ const calcularEdad = (fechaNac) => {
   return edad;
 };
 
+// Tarifa automática por socio: honorífico si consta como tal, si no según edad
+const tarifaParaSocio=(s)=>{
+  if((s.cargo||"").toLowerCase().includes("honor")) return "honorifico";
+  const edad=calcularEdad(s.fecha_nac);
+  if(edad!=null){
+    if(edad<=3) return "infantil_0_3";
+    if(edad<18) return "infantil_mayor";
+    return "renovacion";
+  }
+  return s.tipo==="infantil" ? "infantil_mayor" : "renovacion";
+};
+// Tarifas cuyo importe es 0€: nunca cuentan como "moroso" aunque no tengan cuota pagada
+const TARIFAS_GRATIS=["infantil_0_3","honorifico"];
+
 // Socios activos, con email, de 14 años o más (o adultos sin fecha de nacimiento registrada)
 // Destinatarios de comunicaciones masivas: activos, con email, con el consentimiento
 // de "Comunicaciones promocionales peña" otorgado, y de 14 años o más
@@ -216,7 +230,7 @@ function Dashboard({socios,cuotas,actividades,solicitudes,verificaciones,setTab}
   const verPend = verificaciones.filter(v=>v.estado==="pendiente");
   // "Al corriente" = tiene una cuota de esta temporada marcada como pagada.
   // Cualquier otro activo (sin cuota creada, o con cuota impagada) cuenta como pendiente/moroso.
-  const morosos = activos.filter(s=>!cuotas.some(c=>c.socio_id===s.id&&c.temporada===TEMPORADA_ACTUAL&&c.pagado));
+  const morosos = activos.filter(s=>!TARIFAS_GRATIS.includes(tarifaParaSocio(s)) && !cuotas.some(c=>c.socio_id===s.id&&c.temporada===TEMPORADA_ACTUAL&&c.pagado));
   const municipios = {};
   activos.forEach(s=>{ if(s.municipio) municipios[s.municipio]=(municipios[s.municipio]||0)+1; });
 
@@ -1061,17 +1075,7 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
     ok("🗑️ Cuota eliminada");
   };
 
-  // Tarifa automática por socio: honorífico si consta como tal, si no según edad
-  const tarifaParaSocio=(s)=>{
-    if((s.cargo||"").toLowerCase().includes("honor")) return "honorifico";
-    const edad=calcularEdad(s.fecha_nac);
-    if(edad!=null){
-      if(edad<=3) return "infantil_0_3";
-      if(edad<18) return "infantil_mayor";
-      return "renovacion";
-    }
-    return s.tipo==="infantil" ? "infantil_mayor" : "renovacion";
-  };
+  // Tarifa automática por socio ya está definida arriba a nivel global (tarifaParaSocio)
 
   const [temporadaMasiva,setTemporadaMasiva]=useState(TEMPORADA_ACTUAL);
   const [seleccionMasiva,setSeleccionMasiva]=useState(new Set());
@@ -1117,7 +1121,7 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
     <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}>
       <KPI label="Cobrado" value={fmt(cobradas)} color={C.verde} icon="✅"/>
       <KPI label="Pendiente" value={fmt(pendiente)} color={C.oro} icon="⏳"/>
-      <KPI label="Morosos" value={socios.filter(s=>s.estado==="activo").filter(s=>!cuotas.some(c=>c.socio_id===s.id&&c.temporada===TEMPORADA_ACTUAL&&c.pagado)).length} color={C.rojo} icon="⚠️"/>
+      <KPI label="Morosos" value={socios.filter(s=>s.estado==="activo").filter(s=>!TARIFAS_GRATIS.includes(tarifaParaSocio(s))).filter(s=>!cuotas.some(c=>c.socio_id===s.id&&c.temporada===TEMPORADA_ACTUAL&&c.pagado)).length} color={C.rojo} icon="⚠️"/>
     </div>
     <div style={{display:"flex",gap:8,marginBottom:14}}>
       {["todos","pagadas","pendientes"].map(f=>(
