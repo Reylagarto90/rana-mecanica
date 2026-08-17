@@ -109,6 +109,22 @@ const cargarJsPDF = () => {
   return _jsPDFPromise;
 };
 
+// Carga el logo real de la peña como base64 para insertarlo en el PDF
+let _logoBase64PromiseV = null;
+const cargarLogoBase64V = () => {
+  if (_logoBase64PromiseV) return _logoBase64PromiseV;
+  _logoBase64PromiseV = fetch("/rana-mecanica/logo.jpg")
+    .then(r => r.blob())
+    .then(blob => new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    }))
+    .catch(() => null);
+  return _logoBase64PromiseV;
+};
+
 // Genera el PDF de la ficha con texto real (jsPDF) — sin capturas de pantalla,
 // así que la paginación y el ancho quedan siempre correctos.
 const generarPDFBlob = async (socio) => {
@@ -126,15 +142,18 @@ const generarPDFBlob = async (socio) => {
   const fmtF=(f)=>{ if(!f) return "—"; const d=f.split("T")[0].split("-"); return `${d[2]}/${d[1]}/${d[0]}`; };
   const si_no=(v)=>v?"Sí":"No";
   const ahora = new Date().toLocaleString("es-ES");
+  const logoB64 = await cargarLogoBase64V();
 
   // ── Cabecera ──
   doc.setFillColor(139,10,58);
   doc.roundedRect(M, y, W, 20, 2, 2, "F");
+  if(logoB64) doc.addImage(logoB64, "JPEG", M+4, y+3, 14, 14);
+  const offCab = logoB64 ? 22 : 6;
   doc.setTextColor(255,255,255);
   doc.setFont("helvetica","bold"); doc.setFontSize(14);
-  doc.text("Peña Levantinista La Rana Mecánica", M+6, y+9);
+  doc.text("Peña Levantinista La Rana Mecánica", M+offCab, y+9);
   doc.setFont("helvetica","normal"); doc.setFontSize(9);
-  doc.text("Godella-Rocafort · Temporada 2026/2027", M+6, y+15);
+  doc.text("Godella-Rocafort · Temporada 2026/2027", M+offCab, y+15);
   y += 28;
 
   // ── Título sección ──

@@ -15,6 +15,27 @@ const C = {
 };
 
 const LOGO = "/rana-mecanica/logo.jpg";
+
+// Carga el logo como base64 una sola vez, para poder insertarlo en los PDF generados con jsPDF
+let _logoBase64Promise = null;
+const cargarLogoBase64 = () => {
+  if (_logoBase64Promise) return _logoBase64Promise;
+  _logoBase64Promise = fetch(LOGO)
+    .then(r => r.blob())
+    .then(blob => new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    }))
+    .catch(() => null);
+  return _logoBase64Promise;
+};
+
+// Orden alfabético reutilizable: por apellidos y luego nombre
+const ordenAlfabetico = (arr) => [...arr].sort((a, b) =>
+  `${a.apellidos||""} ${a.nombre||""}`.localeCompare(`${b.apellidos||""} ${b.nombre||""}`, "es")
+);
 const TEMPORADA_ACTUAL = "2026/2027";
 const TEMPORADA_ANTERIOR = "2025/2026";
 const hoy = new Date().toISOString().split("T")[0];
@@ -59,14 +80,17 @@ const generarYSubirFichaActividad = async (actividad, inscripciones, socios) => 
     const M = 15, W = 210 - M * 2, PH = 297;
     let y = M;
     const check = (alto) => { if (y + alto > PH - M) { doc.addPage(); y = M; } };
+    const logoB64 = await cargarLogoBase64();
 
     doc.setFillColor(139,10,58);
     doc.roundedRect(M, y, W, 20, 2, 2, "F");
+    if(logoB64) doc.addImage(logoB64, "JPEG", M+4, y+3, 14, 14);
+    const offsetTexto = logoB64 ? 22 : 6;
     doc.setTextColor(255,255,255);
     doc.setFont("helvetica","bold"); doc.setFontSize(14);
-    doc.text("Peña Levantinista La Rana Mecánica", M+6, y+9);
+    doc.text("Peña Levantinista La Rana Mecánica", M+offsetTexto, y+9);
     doc.setFont("helvetica","normal"); doc.setFontSize(9);
-    doc.text("Ficha de actividad · Godella-Rocafort", M+6, y+15);
+    doc.text("Ficha de actividad · Godella-Rocafort", M+offsetTexto, y+15);
     y += 28;
 
     doc.setTextColor(139,10,58); doc.setFont("helvetica","bold"); doc.setFontSize(16);
@@ -222,7 +246,7 @@ function Select({label,value,onChange,options,required}){
 // Reutilizado en Noticias, Actas y Actividades: casilla general para
 // activar el envío + lista de personas para marcar/desmarcar a mano.
 function SelectorEmail({socios, habilitado, setHabilitado, seleccion, setSeleccion}){
-  const destinatarios = destinatariosMayores14(socios);
+  const destinatarios = ordenAlfabetico(destinatariosMayores14(socios));
   const [busqueda,setBusqueda]=useState("");
 
   useEffect(()=>{
@@ -426,12 +450,12 @@ function Consentimientos({socios,setSocios}){
   const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),2000);};
 
   const activos = socios.filter(s=>s.estado==="activo");
-  const filtrados = activos.filter(s=>{
+  const filtrados = ordenAlfabetico(activos.filter(s=>{
     const m=`${s.nombre} ${s.apellidos} ${s.numero}`.toLowerCase().includes(busqueda.toLowerCase());
     if(!m) return false;
     if(filtroCol==="todos") return true;
     return !s[filtroCol]; // solo los que NO tienen ese consentimiento marcado
-  });
+  }));
 
   const toggle = async (socio, campo) => {
     const nuevoValor = !socio[campo];
@@ -621,11 +645,11 @@ function Peñistas({socios,setSocios,cuotas,setCuotas,actividades,inscripciones,
   const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
 
-  const filtrados=socios.filter(s=>{
+  const filtrados=ordenAlfabetico(socios.filter(s=>{
     const m=`${s.nombre} ${s.apellidos} ${s.municipio||""} ${s.numero}`.toLowerCase().includes(busqueda.toLowerCase());
     if(filtro==="todos") return m;
     return m&&s.estado===filtro;
-  });
+  }));
 
   const abrirEditar=(s)=>{setEditando(s);setForm({...s});};
 
@@ -1376,7 +1400,7 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
 
     <Modal open={modal} onClose={()=>{setModal(false);setEditandoCuota(null);}} title={editandoCuota?"Editar cuota":"Registrar cuota"}>
       <Select label="Socio" value={form.socio_id} onChange={v=>setF("socio_id",v)} required
-        options={[{value:"",label:"— Selecciona socio —"},...socios.filter(s=>s.estado==="activo").map(s=>({value:s.id,label:`${s.nombre} ${s.apellidos} (${s.numero})`}))]}/>
+        options={[{value:"",label:"— Selecciona socio —"},...ordenAlfabetico(socios.filter(s=>s.estado==="activo")).map(s=>({value:s.id,label:`${s.nombre} ${s.apellidos} (${s.numero})`}))]}/>
       <Select label="Tarifa" value={form.categoria} onChange={v=>{
           setF("categoria",v);
           const t=tarifas.find(t=>t.clave===v);
@@ -1419,7 +1443,7 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
       </div>
       <div style={{fontSize:11,color:C.muted,marginBottom:6}}>{seleccionMasiva.size} seleccionados</div>
       <div style={{maxHeight:220,overflowY:"auto",border:`1.5px solid ${C.border}`,borderRadius:8,padding:8,marginBottom:16}}>
-        {socios.filter(s=>s.estado==="activo").filter(s=>`${s.nombre} ${s.apellidos}`.toLowerCase().includes(busquedaMasiva.toLowerCase())).map(s=>{
+        {ordenAlfabetico(socios.filter(s=>s.estado==="activo").filter(s=>`${s.nombre} ${s.apellidos}`.toLowerCase().includes(busquedaMasiva.toLowerCase()))).map(s=>{
           const yaExiste=cuotas.some(c=>c.socio_id===s.id&&c.temporada===temporadaMasiva);
           return(
             <label key={s.id} style={{display:"flex",alignItems:"center",gap:8,padding:"4px 6px",fontSize:13,cursor:"pointer"}}>
@@ -1653,7 +1677,7 @@ function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
 
     <Modal open={modal} onClose={()=>{setModal(false);setEditandoLot(null);}} title={editandoLot?"Editar entrega de lotería":"Repartir lotería"}>
       <Select label="Socio" value={form.socio_id} onChange={v=>setF("socio_id",v)} required
-        options={[{value:"",label:"— Selecciona socio —"},...socios.filter(s=>s.estado==="activo").map(s=>({value:s.id,label:`${s.nombre} ${s.apellidos} (${s.numero})`}))]}/>
+        options={[{value:"",label:"— Selecciona socio —"},...ordenAlfabetico(socios.filter(s=>s.estado==="activo")).map(s=>({value:s.id,label:`${s.nombre} ${s.apellidos} (${s.numero})`}))]}/>
       <Select label="Concepto" value={form.concepto} onChange={v=>setF("concepto",v)} options={["Lotería Navidad","Lotería Niño","Rifa","Otro sorteo"]}/>
       <Input label="Décimos de (opcional)" value={form.decimos_de} onChange={v=>setF("decimos_de",v)} placeholder="Ej: nº de décimo, referencia..."/>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:"0 10px"}}>
@@ -1966,7 +1990,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
       {verInscritos&&(()=>{
         const inscritos=inscritosDe(verInscritos.id);
         const idsInscritos=new Set(inscritos.map(i=>i.socio_id));
-        const disponibles=socios.filter(s=>s.estado==="activo"&&!idsInscritos.has(s.id));
+        const disponibles=ordenAlfabetico(socios.filter(s=>s.estado==="activo"&&!idsInscritos.has(s.id)));
         return(<div>
           <div style={{display:"flex",gap:8,marginBottom:14,padding:"10px",background:C.azulLight,borderRadius:9}}>
             <select value={socioAAnadir} onChange={e=>setSocioAAnadir(e.target.value)} style={{flex:1,padding:"8px 10px",borderRadius:7,border:`1px solid ${C.border}`,fontSize:13,fontFamily:"inherit"}}>
@@ -2765,6 +2789,8 @@ function Informes({socios,cuotas,loteria,actividades,inscripciones,ejercicios,mo
   const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
   const getSocio=(id)=>socios.find(s=>s.id===id);
   const nombreSocio=(id)=>{const s=getSocio(id);return s?`${s.nombre} ${s.apellidos}`:"—";};
+  const nombreOrdenSocio=(id)=>{const s=getSocio(id);return s?`${s.apellidos||""} ${s.nombre||""}`:"zzzz";};
+  const ordenarPorSocio=(arr)=>[...arr].sort((a,b)=>nombreOrdenSocio(a.socio_id).localeCompare(nombreOrdenSocio(b.socio_id),"es"));
 
   const descargar=(wb,nombre)=>{
     XLSX.writeFile(wb,`${nombre}_rana_mecanica_${hoy}.xlsx`);
@@ -2780,14 +2806,17 @@ function Informes({socios,cuotas,loteria,actividades,inscripciones,ejercicios,mo
     const PW = doc.internal.pageSize.getWidth(), PH = doc.internal.pageSize.getHeight();
     const W = PW - M*2;
     let y = M;
+    const logoB64 = await cargarLogoBase64();
 
     const cabecera = () => {
       doc.setFillColor(139,10,58);
       doc.roundedRect(M, y, W, 14, 2, 2, "F");
+      if(logoB64) doc.addImage(logoB64, "JPEG", M+3, y+2, 10, 10);
+      const off = logoB64 ? 16 : 5;
       doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(12);
-      doc.text("Peña Levantinista La Rana Mecánica", M+5, y+6);
+      doc.text("Peña Levantinista La Rana Mecánica", M+off, y+6);
       doc.setFont("helvetica","normal"); doc.setFontSize(9);
-      doc.text(titulo, M+5, y+11);
+      doc.text(titulo, M+off, y+11);
       y += 20;
     };
     cabecera();
@@ -2826,7 +2855,7 @@ function Informes({socios,cuotas,loteria,actividades,inscripciones,ejercicios,mo
   };
 
   const exportarPenistas=()=>{
-    const activos=socios.filter(s=>s.estado==="activo");
+    const activos=ordenAlfabetico(socios.filter(s=>s.estado==="activo"));
     const data=activos.map(s=>({
       "Nº Socio":s.numero,"Nombre":s.nombre,"Apellidos":s.apellidos,"DNI":s.dni||"",
       "Fecha Nac.":s.fecha_nac||"","Teléfono":s.telefono||"","Email":s.email||"","Municipio":s.municipio||"",
@@ -2851,7 +2880,7 @@ function Informes({socios,cuotas,loteria,actividades,inscripciones,ejercicios,mo
         "Pagados":insc.filter(i=>i.pagado).length,"Ingreso generado":insc.filter(i=>i.pagado).length*(a.precio_socio||0),
       };
     });
-    const detalle=inscripciones.filter(i=>i.estado!=="cancelada").map(i=>{
+    const detalle=ordenarPorSocio(inscripciones.filter(i=>i.estado!=="cancelada")).map(i=>{
       const a=actividades.find(x=>x.id===i.actividad_id);
       const nombre=i.socio_id?nombreSocio(i.socio_id):(i.nombre_invitado?`${i.nombre_invitado} (invitado)`:"—");
       return{
@@ -2866,7 +2895,7 @@ function Informes({socios,cuotas,loteria,actividades,inscripciones,ejercicios,mo
   };
 
   const exportarCuotas=()=>{
-    const data=cuotas.map(c=>({
+    const data=ordenarPorSocio(cuotas).map(c=>({
       "Socio":nombreSocio(c.socio_id),"Nº Socio":getSocio(c.socio_id)?.numero||"",
       "Temporada":c.temporada,"Categoría":c.categoria,"Importe":Number(c.importe),
       "Pagado":c.pagado?"Sí":"No","Fecha pago":c.fecha_pago||"","Forma pago":c.forma_pago||"",
@@ -2905,7 +2934,7 @@ function Informes({socios,cuotas,loteria,actividades,inscripciones,ejercicios,mo
   };
 
   const exportarLoteria=()=>{
-    const data=loteria.map(l=>{
+    const data=ordenarPorSocio(loteria).map(l=>{
       const vendidos=Math.max(0,(Number(l.entregados)||0)-(Number(l.devueltos)||0));
       return{
         "Socio":nombreSocio(l.socio_id),"Nº Socio":getSocio(l.socio_id)?.numero||"",
@@ -2923,18 +2952,18 @@ function Informes({socios,cuotas,loteria,actividades,inscripciones,ejercicios,mo
 
   // ── Versiones en PDF (tabla) de los mismos informes ──────────
   const pdfPenistas=()=>{
-    const activos=socios.filter(s=>s.estado==="activo");
+    const activos=ordenAlfabetico(socios.filter(s=>s.estado==="activo"));
     const filas=activos.map(s=>[s.numero,`${s.nombre} ${s.apellidos}`,s.telefono||"",s.municipio||"",s.tipo,s.rgpd?"Sí":"No"]);
     generarTablaPDF("Censo de peñistas activos",["Nº","Nombre","Teléfono","Municipio","Tipo","RGPD"],filas,"censo_penistas");
   };
 
   const pdfCuotas=()=>{
-    const filas=cuotas.map(c=>[nombreSocio(c.socio_id),c.temporada,c.categoria,fmt(c.importe),c.pagado?"Sí":"No",c.fecha_pago?fmtFecha(c.fecha_pago):"—"]);
+    const filas=ordenarPorSocio(cuotas).map(c=>[nombreSocio(c.socio_id),c.temporada,c.categoria,fmt(c.importe),c.pagado?"Sí":"No",c.fecha_pago?fmtFecha(c.fecha_pago):"—"]);
     generarTablaPDF("Cuotas de la temporada",["Socio","Temporada","Categoría","Importe","Pagado","Fecha pago"],filas,"cuotas");
   };
 
   const pdfLoteria=()=>{
-    const filas=loteria.map(l=>{
+    const filas=ordenarPorSocio(loteria).map(l=>{
       const vendidos=Math.max(0,(Number(l.entregados)||0)-(Number(l.devueltos)||0));
       const importe=l.pagado?Number(l.importe_total||0):vendidos*((Number(l.precio_base)||0)+(Number(l.recargo)||0));
       return [nombreSocio(l.socio_id),l.concepto,l.entregados||0,l.devueltos||0,vendidos,fmt(importe),l.pagado?"Sí":"No"];
@@ -2943,7 +2972,7 @@ function Informes({socios,cuotas,loteria,actividades,inscripciones,ejercicios,mo
   };
 
   const pdfActividades=()=>{
-    const filas=actividades.map(a=>{
+    const filas=[...actividades].sort((a,b)=>(a.nombre||"").localeCompare(b.nombre||"","es")).map(a=>{
       const insc=inscripciones.filter(i=>i.actividad_id===a.id&&i.estado!=="cancelada");
       return [a.nombre,a.fecha?fmtFecha(a.fecha):"—",a.tipo,fmt(a.precio_socio||0),insc.length,insc.filter(i=>i.estado==="confirmada").length,insc.filter(i=>i.pagado).length];
     });
@@ -2956,14 +2985,17 @@ function Informes({socios,cuotas,loteria,actividades,inscripciones,ejercicios,mo
     const doc = new jsPDFCtor({ unit: "mm", format: "a4" });
     const M = 15, W = 210 - M*2, PH = 297;
     let y = M;
+    const logoB64 = await cargarLogoBase64();
 
     const cabecera=(subtitulo)=>{
       doc.setFillColor(139,10,58);
       doc.roundedRect(M, y, W, 16, 2, 2, "F");
+      if(logoB64) doc.addImage(logoB64, "JPEG", M+4, y+3, 10, 10);
+      const off = logoB64 ? 17 : 5;
       doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(13);
-      doc.text("Peña Levantinista La Rana Mecánica", M+5, y+7);
+      doc.text("Peña Levantinista La Rana Mecánica", M+off, y+7);
       doc.setFont("helvetica","normal"); doc.setFontSize(9);
-      doc.text(subtitulo, M+5, y+12.5);
+      doc.text(subtitulo, M+off, y+12.5);
       y += 22;
     };
 

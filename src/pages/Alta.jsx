@@ -1,8 +1,6 @@
 import { useState } from "react";
 import { supabase, insertarSolicitudAlta } from "../supabase.js";
 
-const LOGO = "/rana-mecanica/logo.jpg";
-
 const EMAILJS_SERVICE_ID  = "service_g9n6e5c";
 const EMAILJS_TEMPLATE_ID = "template_0rjj2y8";
 const EMAILJS_PUBLIC_KEY  = "IvxWWpgwA15GDRGyF";
@@ -36,6 +34,21 @@ const cargarJsPDF = () => {
   return _jsPDFPromise;
 };
 
+let _logoBase64PromiseA = null;
+const cargarLogoBase64A = () => {
+  if (_logoBase64PromiseA) return _logoBase64PromiseA;
+  _logoBase64PromiseA = fetch("/rana-mecanica/logo.jpg")
+    .then(r => r.blob())
+    .then(blob => new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result);
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    }))
+    .catch(() => null);
+  return _logoBase64PromiseA;
+};
+
 const generarPDFAlta = async (form, tipoSelec) => {
   const jsPDFCtor = await cargarJsPDF();
   const doc = new jsPDFCtor({ unit: "mm", format: "a4" });
@@ -44,14 +57,17 @@ const generarPDFAlta = async (form, tipoSelec) => {
   const check = (alto) => { if (y + alto > PH - M) { doc.addPage(); y = M; } };
   const si_no = (v) => v ? "Sí" : "No";
   const ahora = new Date().toLocaleString("es-ES");
+  const logoB64 = await cargarLogoBase64A();
 
   doc.setFillColor(139,10,58);
   doc.roundedRect(M, y, W, 20, 2, 2, "F");
+  if(logoB64) doc.addImage(logoB64, "JPEG", M+4, y+3, 14, 14);
+  const offCab = logoB64 ? 22 : 6;
   doc.setTextColor(255,255,255);
   doc.setFont("helvetica","bold"); doc.setFontSize(14);
-  doc.text("Peña Levantinista La Rana Mecánica", M+6, y+9);
+  doc.text("Peña Levantinista La Rana Mecánica", M+offCab, y+9);
   doc.setFont("helvetica","normal"); doc.setFontSize(9);
-  doc.text("Solicitud de alta · Godella-Rocafort", M+6, y+15);
+  doc.text("Solicitud de alta · Godella-Rocafort", M+offCab, y+15);
   y += 28;
 
   const titulo=(txt)=>{
@@ -338,7 +354,7 @@ export default function FormularioAlta() {
             📱 Te avisaremos cuando tu alta sea aprobada. El pago de la cuota se gestionará tras la confirmación.
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 13, color: C.muted }}>
-            <img src={LOGO} alt="" style={{ width: 20, height: 20, borderRadius: "50%", objectFit: "cover" }}/> Peña La Rana Mecánica · Levante UD
+            <span style={{ fontSize: 20 }}>🐸</span> Peña La Rana Mecánica · Levante UD
           </div>
         </div>
       </div>
@@ -357,9 +373,7 @@ export default function FormularioAlta() {
       <div style={{ width: "100%", maxWidth: 480 }}>
         {/* CABECERA */}
         <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div style={{ fontSize: 48, marginBottom: 8 }}>
-            <img src={LOGO} alt="Peña La Rana Mecánica" style={{ width: 72, height: 72, borderRadius: "50%", objectFit: "cover", border: "2px solid rgba(255,255,255,0.3)" }}/>
-          </div>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>🐸</div>
           <h1 style={{ fontFamily: "'Playfair Display', serif", color: C.blanco, fontSize: 26, marginBottom: 6 }}>
             Hazte peñista
           </h1>
