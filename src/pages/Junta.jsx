@@ -1715,7 +1715,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
   const [editando,setEditando]=useState(null);
   const [verInscritos,setVerInscritos]=useState(null); // actividad seleccionada
   const [notif,setNotif]=useState(null);
-  const [form,setForm]=useState({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:""});
+  const [form,setForm]=useState({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:"",observaciones:""});
   const [avisarEmail,setAvisarEmail]=useState(true);
   const [seleccionEmail,setSeleccionEmail]=useState(new Set());
   const [archivoCartel,setArchivoCartel]=useState(null);
@@ -1730,7 +1730,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
 
   const abrirNueva=()=>{
     setEditando(null);
-    setForm({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:""});
+    setForm({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:"",observaciones:""});
     setAvisarEmail(true);
     setSeleccionEmail(new Set());
     setArchivoCartel(null);
@@ -1739,7 +1739,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
 
   const abrirEditar=(a)=>{
     setEditando(a);
-    setForm({nombre:a.nombre,fecha:a.fecha||"",fecha_texto:a.fecha_texto||"",tipo:a.tipo,coste:a.coste||0,precio_socio:a.precio_socio||0,plazas:a.plazas||0,responsable:a.responsable||"",descripcion:a.descripcion||""});
+    setForm({nombre:a.nombre,fecha:a.fecha||"",fecha_texto:a.fecha_texto||"",tipo:a.tipo,coste:a.coste||0,precio_socio:a.precio_socio||0,plazas:a.plazas||0,responsable:a.responsable||"",descripcion:a.descripcion||"",observaciones:a.observaciones||""});
     setArchivoCartel(null);
     setModal(true);
   };
@@ -1943,6 +1943,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
           {a.descripcion&&<p style={{fontSize:12,color:C.gris,marginBottom:8,fontStyle:"italic"}}>{a.descripcion}</p>}
           {a.precio_socio>0&&<div style={{fontSize:12,color:C.gris,marginBottom:8}}>💶 {fmt(a.precio_socio)}/persona · 🏟️ {a.plazas} plazas</div>}
           {a.aviso_total!=null&&<div style={{fontSize:11,color:C.muted,marginBottom:8}}>📧 aviso enviado a {a.aviso_enviados}/{a.aviso_total}</div>}
+          {a.observaciones&&<div style={{fontSize:11,color:C.gris,marginBottom:8,padding:"6px 8px",background:C.oroLight,borderRadius:6}}>📝 {a.observaciones}</div>}
           <button onClick={()=>{setVerInscritos(a);setSocioAAnadir("");setNombreInvitado("");setFichaUrl(null);setEmailEnvio("");}} style={{width:"100%",padding:"8px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:C.text,marginBottom:8}}>
             👥 {inscritos.length} apuntados{a.precio_socio>0?` · ${pagados} pagado${pagados===1?"":"s"}`:""}
           </button>
@@ -1967,6 +1968,12 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
         <Input label="Responsable" value={form.responsable} onChange={v=>setF("responsable",v)}/>
       </div>
       <Input label="Descripción" value={form.descripcion} onChange={v=>setF("descripcion",v)}/>
+      <div style={{marginBottom:16}}>
+        <label style={{fontSize:13,fontWeight:600,color:C.gris,display:"block",marginBottom:6}}>Observaciones internas (opcional)</label>
+        <textarea value={form.observaciones} onChange={e=>setF("observaciones",e.target.value)} rows={2}
+          placeholder="Cambios, incidencias, cosas a tener en cuenta..."
+          style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>
+      </div>
       <div style={{marginBottom:16}}>
         <label style={{fontSize:13,fontWeight:600,color:C.gris,display:"block",marginBottom:6}}>Cartel de la actividad (opcional)</label>
         {editando?.cartel_url&&!archivoCartel&&(
@@ -3410,7 +3417,7 @@ export default function Junta(){
           <a href="#/mi-zona" style={{display:"flex",width:"100%",padding:"9px 12px",marginBottom:8,background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.25)",borderRadius:8,cursor:"pointer",color:C.blanco,fontSize:13,fontWeight:600,fontFamily:"inherit",alignItems:"center",justifyContent:"center",gap:8,textDecoration:"none",boxSizing:"border-box"}}>
             🐸 Ir a Mi Zona
           </a>
-          <button onClick={()=>{ sessionStorage.removeItem("junta_auth"); window.location.hash="#/junta/login"; window.location.reload(); }}
+          <button onClick={async()=>{ await supabase.auth.signOut(); sessionStorage.removeItem("junta_auth"); window.location.hash="#/junta/login"; window.location.reload(); }}
             style={{width:"100%",padding:"9px 12px",marginBottom:10,background:"rgba(255,255,255,0.1)",border:"1px solid rgba(255,255,255,0.2)",borderRadius:8,cursor:"pointer",color:C.blanco,fontSize:13,fontWeight:600,fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
             🚪 Cerrar sesión
           </button>

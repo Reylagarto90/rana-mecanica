@@ -794,6 +794,11 @@ function TabActividades({actividades,setActividades,socio}){
                 </div>
               ))}
             </div>
+            {modalAct.observaciones&&(
+              <div style={{padding:"10px 14px",background:C.oroLight,borderRadius:9,fontSize:13,color:C.text,marginBottom:16}}>
+                📝 {modalAct.observaciones}
+              </div>
+            )}
             {!modalAct.inscrito&&modalAct.inscritos<modalAct.plazas&&(
               <button onClick={()=>apuntarse(modalAct.id)} style={{width:"100%",padding:13,background:C.granate,color:C.blanco,border:"none",borderRadius:10,fontWeight:700,fontSize:15,cursor:"pointer",fontFamily:"inherit"}}>
                 ✅ Apuntarme a esta actividad
