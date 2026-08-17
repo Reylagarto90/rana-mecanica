@@ -1081,6 +1081,7 @@ function Verificaciones({verificaciones,setVerificaciones,socios,setSocios}){
 // ══════════════════════════════════════════════════════════
 function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
   const [modal,setModal]=useState(false);
+  const [editandoCuota,setEditandoCuota]=useState(null);
   const [modalMasivo,setModalMasivo]=useState(false);
   const [filtro,setFiltro]=useState("pendientes");
   const [form,setForm]=useState({socio_id:"",temporada:TEMPORADA_ACTUAL,categoria:"nueva_alta",importe:"",pagado:false,fecha_pago:"",forma_pago:"Bizum"});
@@ -1120,8 +1121,33 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
     return null;
   };
 
+  const abrirNuevaCuota=()=>{
+    setEditandoCuota(null);
+    setForm({socio_id:"",temporada:TEMPORADA_ACTUAL,categoria:"nueva_alta",importe:"",pagado:false,fecha_pago:"",forma_pago:"Bizum"});
+    setModal(true);
+  };
+
+  const abrirEditarCuota=(c)=>{
+    setEditandoCuota(c);
+    setForm({socio_id:c.socio_id,temporada:c.temporada,categoria:c.categoria,importe:c.importe,pagado:c.pagado,fecha_pago:c.fecha_pago||"",forma_pago:c.forma_pago||"Bizum"});
+    setModal(true);
+  };
+
   const guardar=async()=>{
     if(!form.socio_id) return;
+    if(editandoCuota){
+      const datos={
+        socio_id:Number(form.socio_id), temporada:form.temporada, categoria:form.categoria,
+        importe:Number(form.importe)||0, forma_pago:form.forma_pago,
+      };
+      const {error}=await supabase.from("cuotas").update(datos).eq("id",editandoCuota.id);
+      if(error){ok("❌ Error al editar");return;}
+      setCuotas(p=>p.map(x=>x.id===editandoCuota.id?{...x,...datos}:x));
+      setModal(false);
+      setEditandoCuota(null);
+      ok("✅ Cuota actualizada"+(editandoCuota.pagado?" (el ingreso ya creado en Tesorería no se actualiza solo, revísalo si hace falta)":""));
+      return;
+    }
     const {data,error}=await supabase.from("cuotas").insert([{
       ...form, socio_id:Number(form.socio_id), importe:Number(form.importe)||0,
       fecha_pago:form.pagado?form.fecha_pago||hoy:null,
@@ -1209,7 +1235,7 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
       <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark}}>💶 Cuotas · {TEMPORADA_ACTUAL}</h2>
       <div style={{display:"flex",gap:8}}>
         <Btn outline onClick={abrirMasivo}>🧾 Generar cuotas de temporada</Btn>
-        <Btn onClick={()=>setModal(true)}>+ Registrar cuota</Btn>
+        <Btn onClick={abrirNuevaCuota}>+ Registrar cuota</Btn>
       </div>
     </div>
     <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}>
@@ -1242,6 +1268,7 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
                   <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                     {!c.pagado&&Number(c.importe)>0&&<Btn small color={C.verde} onClick={()=>marcarPagado(c.id)} disabled={procesando===c.id}>{procesando===c.id?"...":"✓ Cobrada"}</Btn>}
                     {c.pagado&&<button onClick={()=>deshacerPago(c)} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:11,fontFamily:"inherit"}}>↩️ Deshacer</button>}
+                    <button onClick={()=>abrirEditarCuota(c)} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:13,fontFamily:"inherit"}}>✏️</button>
                     <button onClick={()=>eliminarCuota(c)} style={{background:"none",border:"none",cursor:"pointer",color:C.rojo,fontSize:11,fontFamily:"inherit"}}>🗑️</button>
                   </div>
                 </TD>
@@ -1252,7 +1279,7 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
       </div>
     </Card>
 
-    <Modal open={modal} onClose={()=>setModal(false)} title="Registrar cuota">
+    <Modal open={modal} onClose={()=>{setModal(false);setEditandoCuota(null);}} title={editandoCuota?"Editar cuota":"Registrar cuota"}>
       <Select label="Socio" value={form.socio_id} onChange={v=>setF("socio_id",v)} required
         options={[{value:"",label:"— Selecciona socio —"},...socios.filter(s=>s.estado==="activo").map(s=>({value:s.id,label:`${s.nombre} ${s.apellidos} (${s.numero})`}))]}/>
       <Select label="Tarifa" value={form.categoria} onChange={v=>{
@@ -1263,17 +1290,22 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
         options={tarifas.length>0
           ? tarifas.map(t=>({value:t.clave,label:`${t.label} — ${fmt(t.importe)}`}))
           : [{value:"nueva_alta",label:"Nueva alta"},{value:"renovacion",label:"Renovación"}]}/>
+      <Input label="Temporada" value={form.temporada} onChange={v=>setF("temporada",v)}/>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px"}}>
         <Input label="Importe (€)" value={form.importe} onChange={v=>setF("importe",v)} type="number"/>
         <Select label="Forma pago" value={form.forma_pago} onChange={v=>setF("forma_pago",v)} options={["Efectivo","Bizum","Transferencia"]}/>
-        <Input label="Fecha pago" value={form.fecha_pago} onChange={v=>setF("fecha_pago",v)} type="date"/>
+        {!editandoCuota&&<Input label="Fecha pago" value={form.fecha_pago} onChange={v=>setF("fecha_pago",v)} type="date"/>}
       </div>
-      <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,marginBottom:16,cursor:"pointer"}}>
-        <input type="checkbox" checked={form.pagado} onChange={e=>setF("pagado",e.target.checked)}/> Marcar como ya pagada
-      </label>
+      {editandoCuota?(
+        editandoCuota.pagado&&<div style={{fontSize:12,color:C.oro,marginBottom:10,padding:"8px 10px",background:C.oroLight,borderRadius:6}}>⚠️ Esta cuota ya está pagada. El ingreso ya creado en Tesorería no se actualiza solo al cambiar el importe — revísalo a mano si hace falta.</div>
+      ):(
+        <label style={{display:"flex",alignItems:"center",gap:8,fontSize:13,marginBottom:16,cursor:"pointer"}}>
+          <input type="checkbox" checked={form.pagado} onChange={e=>setF("pagado",e.target.checked)}/> Marcar como ya pagada
+        </label>
+      )}
       <div style={{display:"flex",gap:10}}>
-        <Btn outline onClick={()=>setModal(false)} style={{flex:1}}>Cancelar</Btn>
-        <Btn onClick={guardar} style={{flex:1}}>Guardar</Btn>
+        <Btn outline onClick={()=>{setModal(false);setEditandoCuota(null);}} style={{flex:1}}>Cancelar</Btn>
+        <Btn onClick={guardar} style={{flex:1}}>{editandoCuota?"Guardar cambios":"Guardar"}</Btn>
       </div>
     </Modal>
 
@@ -1316,6 +1348,7 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
 // ══════════════════════════════════════════════════════════
 function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
   const [modal,setModal]=useState(false);
+  const [editandoLot,setEditandoLot]=useState(null);
   const [modalDevol,setModalDevol]=useState(null); // fila en la que se edita devueltos
   const [devueltosTemp,setDevueltosTemp]=useState("");
   const [filtro,setFiltro]=useState("pendientes");
@@ -1351,9 +1384,35 @@ function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
     },{})
   ).sort((a,b)=>b.aLiquidar-a.aLiquidar);
 
+  const abrirNuevo=()=>{
+    setEditandoLot(null);
+    setForm({socio_id:"",concepto:"Lotería Navidad",decimos_de:"",entregados:1,precio_base:20,recargo:0});
+    setModal(true);
+  };
+
+  const abrirEditarLot=(l)=>{
+    setEditandoLot(l);
+    setForm({socio_id:l.socio_id,concepto:l.concepto,decimos_de:l.decimos_de||"",entregados:l.entregados,precio_base:l.precio_base,recargo:l.recargo});
+    setModal(true);
+  };
+
   const guardar=async()=>{
     if(!form.socio_id) return;
     const entregados=Number(form.entregados)||0, precio_base=Number(form.precio_base)||0, recargo=Number(form.recargo)||0;
+    if(editandoLot){
+      // Al editar sin liquidar todavía, se recalcula importe_total por si acaso (aunque solo se usa de verdad al liquidar)
+      const datos={
+        socio_id:Number(form.socio_id), concepto:form.concepto, decimos_de:form.decimos_de||null,
+        entregados, precio_base, recargo, unidades:entregados, precio_und:precio_base,
+      };
+      const {error}=await supabase.from("loteria").update(datos).eq("id",editandoLot.id);
+      if(error){ok("❌ Error al editar");return;}
+      setLoteria(p=>p.map(x=>x.id===editandoLot.id?{...x,...datos}:x));
+      setModal(false);
+      setEditandoLot(null);
+      ok("✅ Entrega de lotería actualizada");
+      return;
+    }
     const {data,error}=await supabase.from("loteria").insert([{
       socio_id:Number(form.socio_id), concepto:form.concepto, decimos_de:form.decimos_de||null,
       entregados, devueltos:0, precio_base, recargo,
@@ -1426,7 +1485,7 @@ function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
     {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.verde,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14}}>{notif}</div>}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:12}}>
       <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark}}>🎟️ Lotería</h2>
-      <Btn onClick={()=>setModal(true)}>+ Repartir lotería</Btn>
+      <Btn onClick={abrirNuevo}>+ Repartir lotería</Btn>
     </div>
     <div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:20}}>
       <KPI label="Liquidado" value={fmt(cobrado)} color={C.verde} icon="✅"/>
@@ -1464,6 +1523,7 @@ function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
                   <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                     {!l.pagado&&<Btn small color={C.verde} onClick={()=>liquidar(l)} disabled={procesando===l.id}>{procesando===l.id?"...":"✓ Liquidar"}</Btn>}
                     {l.pagado&&<button onClick={()=>deshacerLiquidacion(l)} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:11,fontFamily:"inherit"}}>↩️ Deshacer</button>}
+                    <button onClick={()=>abrirEditarLot(l)} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:13,fontFamily:"inherit"}}>✏️</button>
                     <button onClick={()=>eliminarLoteria(l)} style={{background:"none",border:"none",cursor:"pointer",color:C.rojo,fontSize:11,fontFamily:"inherit"}}>🗑️</button>
                   </div>
                 </TD>
@@ -1496,7 +1556,7 @@ function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
       </div>
     </Card>
 
-    <Modal open={modal} onClose={()=>setModal(false)} title="Repartir lotería">
+    <Modal open={modal} onClose={()=>{setModal(false);setEditandoLot(null);}} title={editandoLot?"Editar entrega de lotería":"Repartir lotería"}>
       <Select label="Socio" value={form.socio_id} onChange={v=>setF("socio_id",v)} required
         options={[{value:"",label:"— Selecciona socio —"},...socios.filter(s=>s.estado==="activo").map(s=>({value:s.id,label:`${s.nombre} ${s.apellidos} (${s.numero})`}))]}/>
       <Select label="Concepto" value={form.concepto} onChange={v=>setF("concepto",v)} options={["Lotería Navidad","Lotería Niño","Rifa","Otro sorteo"]}/>
@@ -1506,10 +1566,11 @@ function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
         <Input label="Precio base (€)" value={form.precio_base} onChange={v=>setF("precio_base",v)} type="number"/>
         <Input label="Recargo (€)" value={form.recargo} onChange={v=>setF("recargo",v)} type="number"/>
       </div>
+      {editandoLot?.pagado&&<div style={{fontSize:12,color:C.oro,marginBottom:10,padding:"8px 10px",background:C.oroLight,borderRadius:6}}>⚠️ Esta entrega ya está liquidada. Cambiar estos datos no actualiza el ingreso ya creado en Tesorería — revísalo a mano si hace falta.</div>}
       <div style={{fontSize:13,color:C.muted,marginBottom:16}}>Si vende todos: <strong style={{color:C.text}}>{fmt((Number(form.entregados)||0)*((Number(form.precio_base)||0)+(Number(form.recargo)||0)))}</strong> a liquidar</div>
       <div style={{display:"flex",gap:10}}>
-        <Btn outline onClick={()=>setModal(false)} style={{flex:1}}>Cancelar</Btn>
-        <Btn onClick={guardar} style={{flex:1}}>Repartir</Btn>
+        <Btn outline onClick={()=>{setModal(false);setEditandoLot(null);}} style={{flex:1}}>Cancelar</Btn>
+        <Btn onClick={guardar} style={{flex:1}}>{editandoLot?"Guardar cambios":"Repartir"}</Btn>
       </div>
     </Modal>
 
@@ -1853,6 +1914,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
 // ══════════════════════════════════════════════════════════
 function Noticias({noticias,setNoticias,socios}){
   const [modal,setModal]=useState(false);
+  const [editandoNoticia,setEditandoNoticia]=useState(null);
   const [publicando,setPublicando]=useState(false);
   const [form,setForm]=useState({titulo:"",cuerpo:""});
   const [enviarEmail,setEnviarEmail]=useState(true);
@@ -1865,8 +1927,26 @@ function Noticias({noticias,setNoticias,socios}){
   const destinatariosElegibles = destinatariosMayores14(socios);
   const destinatariosFinal = destinatariosElegibles.filter(s=>seleccionEmail.has(s.id));
 
+  const abrirEditarNoticia=(n)=>{
+    setEditandoNoticia(n);
+    setForm({titulo:n.titulo,cuerpo:n.cuerpo});
+    setModal(true);
+  };
+
   const guardar=async()=>{
     if(!form.titulo||!form.cuerpo) return;
+    if(editandoNoticia){
+      setPublicando(true);
+      const {error}=await supabase.from("noticias").update({titulo:form.titulo,cuerpo:form.cuerpo}).eq("id",editandoNoticia.id);
+      setPublicando(false);
+      if(error){ok("❌ Error al editar");return;}
+      setNoticias(p=>p.map(x=>x.id===editandoNoticia.id?{...x,titulo:form.titulo,cuerpo:form.cuerpo}:x));
+      setModal(false);
+      setEditandoNoticia(null);
+      setForm({titulo:"",cuerpo:""});
+      ok("✅ Noticia actualizada (el email ya enviado no se reenvía)");
+      return;
+    }
     setPublicando(true);
 
     let adjunto_url=null, adjunto_path=null, adjunto_nombre=null;
@@ -1930,8 +2010,9 @@ function Noticias({noticias,setNoticias,socios}){
               </div>
               <p style={{fontSize:13,color:C.gris,marginTop:8,whiteSpace:"pre-wrap"}}>{n.cuerpo}</p>
               {n.adjunto_url&&<a href={n.adjunto_url} target="_blank" rel="noreferrer" style={{display:"inline-block",marginTop:8,padding:"6px 12px",background:C.grisLight,borderRadius:8,fontSize:12,fontWeight:600,color:C.text,textDecoration:"none"}}>📎 {n.adjunto_nombre||"Ver adjunto"}</a>}
-              <div style={{marginTop:10}}>
+              <div style={{marginTop:10,display:"flex",gap:10,alignItems:"center"}}>
                 <BotonWhatsApp texto={`🐸 *${n.titulo}*\n\n${n.cuerpo}${n.adjunto_url?`\n\n${n.adjunto_url}`:""}\n\nMás en Mi Zona: https://reylagarto90.github.io/rana-mecanica/#/mi-zona`}/>
+                <button onClick={()=>abrirEditarNoticia(n)} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:12,fontFamily:"inherit",fontWeight:600}}>✏️ Editar</button>
               </div>
             </div>
             <button onClick={()=>eliminar(n)} style={{background:"none",border:"none",cursor:"pointer",color:C.rojo,fontSize:16,flexShrink:0}}>🗑️</button>
@@ -1940,22 +2021,25 @@ function Noticias({noticias,setNoticias,socios}){
       ))}
     </div>
 
-    <Modal open={modal} onClose={()=>setModal(false)} title="📢 Publicar noticia">
+    <Modal open={modal} onClose={()=>{setModal(false);setEditandoNoticia(null);setForm({titulo:"",cuerpo:""});}} title={editandoNoticia?"✏️ Editar noticia":"📢 Publicar noticia"}>
       <Input label="Título" value={form.titulo} onChange={v=>setF("titulo",v)} required/>
       <div style={{marginBottom:14}}>
         <label style={{fontSize:13,fontWeight:600,color:C.gris,display:"block",marginBottom:6}}>Contenido</label>
         <textarea value={form.cuerpo} onChange={e=>setF("cuerpo",e.target.value)} rows={5}
           style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>
       </div>
-      <div style={{marginBottom:16}}>
-        <label style={{fontSize:13,fontWeight:600,color:C.gris,display:"block",marginBottom:6}}>Adjuntar documentación (opcional)</label>
-        <input type="file" onChange={e=>setArchivo(e.target.files?.[0]||null)}
-          style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
-      </div>
-      <SelectorEmail socios={socios} habilitado={enviarEmail} setHabilitado={setEnviarEmail} seleccion={seleccionEmail} setSeleccion={setSeleccionEmail}/>
+      {!editandoNoticia&&(<>
+        <div style={{marginBottom:16}}>
+          <label style={{fontSize:13,fontWeight:600,color:C.gris,display:"block",marginBottom:6}}>Adjuntar documentación (opcional)</label>
+          <input type="file" onChange={e=>setArchivo(e.target.files?.[0]||null)}
+            style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+        </div>
+        <SelectorEmail socios={socios} habilitado={enviarEmail} setHabilitado={setEnviarEmail} seleccion={seleccionEmail} setSeleccion={setSeleccionEmail}/>
+      </>)}
+      {editandoNoticia&&<p style={{fontSize:12,color:C.oro,marginBottom:14,padding:"8px 10px",background:C.oroLight,borderRadius:6}}>⚠️ Editar aquí no reenvía el email ni cambia el adjunto ya subido.</p>}
       <div style={{display:"flex",gap:10}}>
-        <Btn outline onClick={()=>setModal(false)} style={{flex:1}}>Cancelar</Btn>
-        <Btn onClick={guardar} style={{flex:1}} disabled={publicando}>{publicando?"Publicando...":"Publicar"}</Btn>
+        <Btn outline onClick={()=>{setModal(false);setEditandoNoticia(null);setForm({titulo:"",cuerpo:""});}} style={{flex:1}}>Cancelar</Btn>
+        <Btn onClick={guardar} style={{flex:1}} disabled={publicando}>{publicando?(editandoNoticia?"Guardando...":"Publicando..."):(editandoNoticia?"Guardar cambios":"Publicar")}</Btn>
       </div>
     </Modal>
   </div>);
@@ -1966,6 +2050,7 @@ function Noticias({noticias,setNoticias,socios}){
 // ══════════════════════════════════════════════════════════
 function Actas({actas,setActas,socios}){
   const [modal,setModal]=useState(false);
+  const [editandoActa,setEditandoActa]=useState(null);
   const [subiendo,setSubiendo]=useState(false);
   const [form,setForm]=useState({titulo:"",fecha:hoy,resumen:""});
   const [enviarEmail,setEnviarEmail]=useState(false);
@@ -1978,8 +2063,26 @@ function Actas({actas,setActas,socios}){
   const destinatariosElegibles = destinatariosMayores14(socios);
   const destinatariosFinal = destinatariosElegibles.filter(s=>seleccionEmail.has(s.id));
 
+  const abrirEditarActa=(a)=>{
+    setEditandoActa(a);
+    setForm({titulo:a.titulo,fecha:a.fecha,resumen:a.resumen||""});
+    setModal(true);
+  };
+
   const guardar=async()=>{
     if(!form.titulo||!form.fecha) return;
+    if(editandoActa){
+      setSubiendo(true);
+      const {error}=await supabase.from("actas").update({titulo:form.titulo,fecha:form.fecha,resumen:form.resumen}).eq("id",editandoActa.id);
+      setSubiendo(false);
+      if(error){ok("❌ Error al editar");return;}
+      setActas(p=>p.map(x=>x.id===editandoActa.id?{...x,titulo:form.titulo,fecha:form.fecha,resumen:form.resumen}:x));
+      setModal(false);
+      setEditandoActa(null);
+      setForm({titulo:"",fecha:hoy,resumen:""});
+      ok("✅ Acta actualizada");
+      return;
+    }
     setSubiendo(true);
     let pdf_url=null, pdf_path=null;
     if(archivo){
@@ -2030,8 +2133,9 @@ function Actas({actas,setActas,socios}){
               <div style={{fontWeight:700,fontSize:15,color:C.text}}>{a.titulo}</div>
               <div style={{fontSize:12,color:C.muted,marginTop:2}}>{fmtFecha(a.fecha)}</div>
               {a.resumen&&<p style={{fontSize:13,color:C.gris,marginTop:8}}>{a.resumen}</p>}
-              <div style={{marginTop:10}}>
+              <div style={{marginTop:10,display:"flex",gap:10,alignItems:"center"}}>
                 <BotonWhatsApp texto={`📜 Nueva acta publicada: *${a.titulo}* (${fmtFecha(a.fecha)})${a.resumen?`\n\n${a.resumen}`:""}${a.pdf_url?`\n\n${a.pdf_url}`:""}\n\nConsúltala en Mi Zona: https://reylagarto90.github.io/rana-mecanica/#/mi-zona`}/>
+                <button onClick={()=>abrirEditarActa(a)} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:12,fontFamily:"inherit",fontWeight:600}}>✏️ Editar</button>
               </div>
             </div>
             <div style={{display:"flex",gap:8,flexShrink:0}}>
@@ -2043,7 +2147,7 @@ function Actas({actas,setActas,socios}){
       ))}
     </div>
 
-    <Modal open={modal} onClose={()=>setModal(false)} title="📜 Nueva acta">
+    <Modal open={modal} onClose={()=>{setModal(false);setEditandoActa(null);setForm({titulo:"",fecha:hoy,resumen:""});}} title={editandoActa?"✏️ Editar acta":"📜 Nueva acta"}>
       <Input label="Título" value={form.titulo} onChange={v=>setF("titulo",v)} placeholder="Ej: Asamblea General Ordinaria" required/>
       <Input label="Fecha" value={form.fecha} onChange={v=>setF("fecha",v)} type="date" required/>
       <div style={{marginBottom:14}}>
@@ -2051,15 +2155,18 @@ function Actas({actas,setActas,socios}){
         <textarea value={form.resumen} onChange={e=>setF("resumen",e.target.value)} rows={4}
           style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>
       </div>
-      <div style={{marginBottom:16}}>
-        <label style={{fontSize:13,fontWeight:600,color:C.gris,display:"block",marginBottom:6}}>PDF del acta original (opcional)</label>
-        <input type="file" accept="application/pdf" onChange={e=>setArchivo(e.target.files?.[0]||null)}
-          style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
-      </div>
-      <SelectorEmail socios={socios} habilitado={enviarEmail} setHabilitado={setEnviarEmail} seleccion={seleccionEmail} setSeleccion={setSeleccionEmail}/>
+      {!editandoActa&&(<>
+        <div style={{marginBottom:16}}>
+          <label style={{fontSize:13,fontWeight:600,color:C.gris,display:"block",marginBottom:6}}>PDF del acta original (opcional)</label>
+          <input type="file" accept="application/pdf" onChange={e=>setArchivo(e.target.files?.[0]||null)}
+            style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+        </div>
+        <SelectorEmail socios={socios} habilitado={enviarEmail} setHabilitado={setEnviarEmail} seleccion={seleccionEmail} setSeleccion={setSeleccionEmail}/>
+      </>)}
+      {editandoActa&&<p style={{fontSize:12,color:C.oro,marginBottom:14,padding:"8px 10px",background:C.oroLight,borderRadius:6}}>⚠️ Editar aquí no reenvía el email ni cambia el PDF ya subido.</p>}
       <div style={{display:"flex",gap:10}}>
-        <Btn outline onClick={()=>setModal(false)} style={{flex:1}}>Cancelar</Btn>
-        <Btn onClick={guardar} style={{flex:1}} disabled={subiendo}>{subiendo?"Publicando...":"Publicar acta"}</Btn>
+        <Btn outline onClick={()=>{setModal(false);setEditandoActa(null);setForm({titulo:"",fecha:hoy,resumen:""});}} style={{flex:1}}>Cancelar</Btn>
+        <Btn onClick={guardar} style={{flex:1}} disabled={subiendo}>{subiendo?(editandoActa?"Guardando...":"Publicando..."):(editandoActa?"Guardar cambios":"Publicar acta")}</Btn>
       </div>
     </Modal>
   </div>);
@@ -2166,6 +2273,7 @@ function Auditoria(){
 function Tesoreria({ejercicios,setEjercicios,movimientos,setMovimientos}){
   const [ejId,setEjId]=useState(ejercicios[ejercicios.length-1]?.id);
   const [modal,setModal]=useState(null);
+  const [editandoMov,setEditandoMov]=useState(null);
   const [modalNuevoEj,setModalNuevoEj]=useState(false);
   const [form,setForm]=useState({tipo:"ingreso",concepto:"",categoria:"Cuotas socios",importe:"",fecha:hoy,observaciones:""});
   const [formNuevoEj,setFormNuevoEj]=useState({nombre:"",ejercicioBaseId:"",incluirRemanente:true});
@@ -2241,8 +2349,24 @@ function Tesoreria({ejercicios,setEjercicios,movimientos,setMovimientos}){
   const gastos=movEj.filter(m=>m.tipo==="gasto").reduce((a,m)=>a+Number(m.importe),0);
   const resultado=ingresos-gastos;
 
+  const abrirEditarMov=(m)=>{
+    setEditandoMov(m);
+    setForm({tipo:m.tipo,concepto:m.concepto,categoria:m.categoria,importe:m.importe,fecha:m.fecha,observaciones:m.observaciones||""});
+    setModal(m.tipo);
+  };
+
   const guardar=async()=>{
     if(!form.concepto||!form.importe) return;
+    if(editandoMov){
+      const datos={...form,importe:Number(form.importe)};
+      const {error}=await supabase.from("movimientos_ejercicio").update(datos).eq("id",editandoMov.id);
+      if(error){ok("❌ Error al editar");return;}
+      setMovimientos(p=>p.map(x=>x.id===editandoMov.id?{...x,...datos}:x));
+      setModal(null);
+      setEditandoMov(null);
+      ok("✅ Movimiento actualizado");
+      return;
+    }
     const {data,error}=await supabase.from("movimientos_ejercicio").insert([{...form,ejercicio_id:ej.id,importe:Number(form.importe)}]).select();
     if(error){ok("❌ Error");return;}
     setMovimientos(p=>[...p,...data]);
@@ -2322,6 +2446,7 @@ function Tesoreria({ejercicios,setEjercicios,movimientos,setMovimientos}){
                       </div>
                       <div style={{display:"flex",alignItems:"center",gap:10}}>
                         <span style={{fontWeight:600,color,fontSize:13}}>{fmt(m.importe)}</span>
+                        <button onClick={()=>abrirEditarMov(m)} title="Editar" style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:13,fontFamily:"inherit"}}>✏️</button>
                         <button onClick={()=>eliminarMovimiento(m)} title="Eliminar" style={{background:"none",border:"none",cursor:"pointer",color:C.muted,fontSize:13,fontFamily:"inherit"}}>🗑️</button>
                       </div>
                     </div>
@@ -2349,6 +2474,7 @@ function Tesoreria({ejercicios,setEjercicios,movimientos,setMovimientos}){
               </div>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontWeight:700,color,fontSize:14}}>{fmt(m.importe)}</span>
+                <button onClick={()=>abrirEditarMov(m)} title="Editar" style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:13,fontFamily:"inherit"}}>✏️</button>
                 <button onClick={()=>eliminarMovimiento(m)} title="Eliminar" style={{background:"none",border:"none",cursor:"pointer",color:C.muted,fontSize:13,fontFamily:"inherit"}}>🗑️</button>
               </div>
             </div>
@@ -2361,7 +2487,7 @@ function Tesoreria({ejercicios,setEjercicios,movimientos,setMovimientos}){
       })}
     </div>
 
-    <Modal open={!!modal} onClose={()=>setModal(null)} title={modal==="ingreso"?"➕ Nuevo ingreso":"➖ Nuevo gasto"}>
+    <Modal open={!!modal} onClose={()=>{setModal(null);setEditandoMov(null);}} title={editandoMov?(modal==="ingreso"?"✏️ Editar ingreso":"✏️ Editar gasto"):(modal==="ingreso"?"➕ Nuevo ingreso":"➖ Nuevo gasto")}>
       <Input label="Concepto" value={form.concepto} onChange={v=>setF("concepto",v)} required/>
       <Select label="Categoría" value={form.categoria} onChange={v=>setF("categoria",v)}
         options={(modal==="ingreso"?CAT_ING:CAT_GAS).map(c=>({value:c,label:c}))}/>
@@ -2376,8 +2502,8 @@ function Tesoreria({ejercicios,setEjercicios,movimientos,setMovimientos}){
           style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>
       </div>
       <div style={{display:"flex",gap:10}}>
-        <Btn outline onClick={()=>setModal(null)} style={{flex:1}}>Cancelar</Btn>
-        <Btn color={modal==="ingreso"?C.verde:C.rojo} onClick={guardar} style={{flex:1}}>Guardar</Btn>
+        <Btn outline onClick={()=>{setModal(null);setEditandoMov(null);}} style={{flex:1}}>Cancelar</Btn>
+        <Btn color={modal==="ingreso"?C.verde:C.rojo} onClick={guardar} style={{flex:1}}>{editandoMov?"Guardar cambios":"Guardar"}</Btn>
       </div>
     </Modal>
 
