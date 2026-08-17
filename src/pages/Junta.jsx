@@ -1475,6 +1475,8 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
   const [form,setForm]=useState({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:""});
   const [avisarEmail,setAvisarEmail]=useState(true);
   const [seleccionEmail,setSeleccionEmail]=useState(new Set());
+  const [archivoCartel,setArchivoCartel]=useState(null);
+  const [subiendoCartel,setSubiendoCartel]=useState(false);
   const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
 
@@ -1488,12 +1490,14 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
     setForm({nombre:"",fecha:"",fecha_texto:"",tipo:"autocar",coste:0,precio_socio:0,plazas:50,responsable:"",descripcion:""});
     setAvisarEmail(true);
     setSeleccionEmail(new Set());
+    setArchivoCartel(null);
     setModal(true);
   };
 
   const abrirEditar=(a)=>{
     setEditando(a);
     setForm({nombre:a.nombre,fecha:a.fecha||"",fecha_texto:a.fecha_texto||"",tipo:a.tipo,coste:a.coste||0,precio_socio:a.precio_socio||0,plazas:a.plazas||0,responsable:a.responsable||"",descripcion:a.descripcion||""});
+    setArchivoCartel(null);
     setModal(true);
   };
 
@@ -1501,13 +1505,25 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
 
   const guardar=async()=>{
     if(!form.nombre) return;
+    setSubiendoCartel(true);
+    let cartel_url=editando?.cartel_url||null, cartel_path=editando?.cartel_path||null;
+    if(archivoCartel){
+      const ext=archivoCartel.name.split(".").pop();
+      const nombreArchivo=`${crypto.randomUUID()}.${ext}`;
+      const {error:errSubida}=await supabase.storage.from("actividades").upload(nombreArchivo,archivoCartel,{contentType:archivoCartel.type});
+      if(errSubida){ ok("❌ Error subiendo el cartel"); setSubiendoCartel(false); return; }
+      const {data:firmada}=await supabase.storage.from("actividades").createSignedUrl(nombreArchivo,60*60*24*365*2);
+      cartel_url=firmada?.signedUrl||null; cartel_path=nombreArchivo;
+    }
+    setSubiendoCartel(false);
+    const datosConCartel={...form,cartel_url,cartel_path};
     if(editando){
-      const {error}=await supabase.from("actividades").update(form).eq("id",editando.id);
+      const {error}=await supabase.from("actividades").update(datosConCartel).eq("id",editando.id);
       if(error){ok("❌ Error");return;}
-      setActividades(p=>p.map(a=>a.id===editando.id?{...a,...form}:a));
+      setActividades(p=>p.map(a=>a.id===editando.id?{...a,...datosConCartel}:a));
       ok("✅ Actividad actualizada");
     }else{
-      const {data,error}=await supabase.from("actividades").insert([form]).select();
+      const {data,error}=await supabase.from("actividades").insert([datosConCartel]).select();
       if(error){ok("❌ Error");return;}
       setActividades(p=>[...p,...data]);
       const destinatariosFinal=destinatariosMayores14(socios).filter(s=>seleccionEmail.has(s.id));
@@ -1596,6 +1612,32 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
     ok("Vuelta a pendiente");
   };
 
+  const [socioAAnadir,setSocioAAnadir]=useState("");
+  const [anadiendo,setAnadiendo]=useState(false);
+
+  const anadirManual=async(actividadId)=>{
+    if(!socioAAnadir) return;
+    setAnadiendo(true);
+    // Si ya tiene una fila (por ejemplo cancelada de antes), la reactivamos ya confirmada
+    const {data:actualizada}=await supabase.from("inscripciones")
+      .update({estado:"confirmada"}).eq("actividad_id",actividadId).eq("socio_id",Number(socioAAnadir)).select();
+    let nuevaFila=actualizada?.[0]||null;
+    if(!nuevaFila){
+      const {data,error}=await supabase.from("inscripciones").insert({
+        actividad_id:actividadId, socio_id:Number(socioAAnadir), estado:"confirmada",
+      }).select();
+      if(error){ ok("❌ Error al añadir"); setAnadiendo(false); return; }
+      nuevaFila=data?.[0];
+    }
+    if(nuevaFila) setInscripciones(prev=>{
+      const sinDuplicado=prev.filter(i=>i.id!==nuevaFila.id);
+      return [...sinDuplicado,nuevaFila];
+    });
+    setSocioAAnadir("");
+    setAnadiendo(false);
+    ok("✅ Peñista añadido con plaza confirmada");
+  };
+
   return(<div>
     {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.verde,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14}}>{notif}</div>}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:12}}>
@@ -1607,7 +1649,9 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
         const inscritos=inscritosDe(a.id);
         const pagados=inscritos.filter(i=>i.pagado).length;
         return(
-        <Card key={a.id} style={{borderTop:`4px solid ${a.fecha&&a.fecha<hoy?C.gris:C.granate}`}}>
+        <Card key={a.id} style={{borderTop:`4px solid ${a.fecha&&a.fecha<hoy?C.gris:C.granate}`,padding:0,overflow:"hidden"}}>
+          {a.cartel_url&&<img src={a.cartel_url} alt={a.nombre} style={{width:"100%",height:120,objectFit:"cover",display:"block"}}/>}
+          <div style={{padding:16}}>
           <div style={{display:"flex",justifyContent:"space-between",marginBottom:10}}>
             <span style={{fontSize:24}}>{tipoIcon[a.tipo]||"📌"}</span>
             <Pill text={a.fecha&&a.fecha<hoy?"Realizada":"Próxima"} color={a.fecha&&a.fecha<hoy?C.gris:C.azul} bg={a.fecha&&a.fecha<hoy?"#f0f0f0":C.azulLight}/>
@@ -1617,7 +1661,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
           {a.descripcion&&<p style={{fontSize:12,color:C.gris,marginBottom:8,fontStyle:"italic"}}>{a.descripcion}</p>}
           {a.precio_socio>0&&<div style={{fontSize:12,color:C.gris,marginBottom:8}}>💶 {fmt(a.precio_socio)}/persona · 🏟️ {a.plazas} plazas</div>}
           {a.aviso_total!=null&&<div style={{fontSize:11,color:C.muted,marginBottom:8}}>📧 aviso enviado a {a.aviso_enviados}/{a.aviso_total}</div>}
-          <button onClick={()=>setVerInscritos(a)} style={{width:"100%",padding:"8px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:C.text,marginBottom:8}}>
+          <button onClick={()=>{setVerInscritos(a);setSocioAAnadir("");}} style={{width:"100%",padding:"8px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:C.text,marginBottom:8}}>
             👥 {inscritos.length} apuntados{a.precio_socio>0?` · ${pagados} pagado${pagados===1?"":"s"}`:""}
           </button>
           <div style={{display:"flex",gap:6,marginBottom:6}}>
@@ -1625,6 +1669,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
             <button onClick={()=>eliminarActividad(a)} style={{flex:1,padding:"7px",background:C.rojoLight,border:`1px solid ${C.rojo}40`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",color:C.rojo}}>🗑️ Eliminar</button>
           </div>
           <BotonWhatsApp style={{width:"100%",justifyContent:"center"}} texto={`🐸 Nueva actividad en La Rana Mecánica:\n\n*${a.nombre}*\n📅 ${a.fecha_texto||fmtFecha(a.fecha)}\n${a.precio_socio>0?`💶 ${fmt(a.precio_socio)}/persona`:"Gratuita"}\n\nApúntate desde Mi Zona:\nhttps://reylagarto90.github.io/rana-mecanica/#/mi-zona`}/>
+          </div>
         </Card>
       );})}
     </div>
@@ -1640,19 +1685,39 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
         <Input label="Responsable" value={form.responsable} onChange={v=>setF("responsable",v)}/>
       </div>
       <Input label="Descripción" value={form.descripcion} onChange={v=>setF("descripcion",v)}/>
+      <div style={{marginBottom:16}}>
+        <label style={{fontSize:13,fontWeight:600,color:C.gris,display:"block",marginBottom:6}}>Cartel de la actividad (opcional)</label>
+        {editando?.cartel_url&&!archivoCartel&&(
+          <div style={{marginBottom:8}}>
+            <img src={editando.cartel_url} alt="Cartel actual" style={{maxHeight:120,borderRadius:8,border:`1px solid ${C.border}`}}/>
+          </div>
+        )}
+        <input type="file" accept="image/*" onChange={e=>setArchivoCartel(e.target.files?.[0]||null)}
+          style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
+      </div>
       {!editando&&(
         <SelectorEmail socios={socios} habilitado={avisarEmail} setHabilitado={setAvisarEmail} seleccion={seleccionEmail} setSeleccion={setSeleccionEmail}/>
       )}
       <div style={{display:"flex",gap:10}}>
-        <Btn outline onClick={()=>{setModal(false);setEditando(null);}} style={{flex:1}} disabled={enviandoAviso}>Cancelar</Btn>
-        <Btn onClick={guardar} style={{flex:1}} disabled={enviandoAviso}>{enviandoAviso?"Enviando aviso...":editando?"Guardar cambios":"Crear actividad"}</Btn>
+        <Btn outline onClick={()=>{setModal(false);setEditando(null);}} style={{flex:1}} disabled={enviandoAviso||subiendoCartel}>Cancelar</Btn>
+        <Btn onClick={guardar} style={{flex:1}} disabled={enviandoAviso||subiendoCartel}>{subiendoCartel?"Subiendo cartel...":enviandoAviso?"Enviando aviso...":editando?"Guardar cambios":"Crear actividad"}</Btn>
       </div>
     </Modal>
 
     <Modal open={!!verInscritos} onClose={()=>setVerInscritos(null)} title={verInscritos?`👥 Apuntados · ${verInscritos.nombre}`:""} width={560}>
       {verInscritos&&(()=>{
         const inscritos=inscritosDe(verInscritos.id);
+        const idsInscritos=new Set(inscritos.map(i=>i.socio_id));
+        const disponibles=socios.filter(s=>s.estado==="activo"&&!idsInscritos.has(s.id));
         return(<div>
+          <div style={{display:"flex",gap:8,marginBottom:14,padding:"10px",background:C.azulLight,borderRadius:9}}>
+            <select value={socioAAnadir} onChange={e=>setSocioAAnadir(e.target.value)} style={{flex:1,padding:"8px 10px",borderRadius:7,border:`1px solid ${C.border}`,fontSize:13,fontFamily:"inherit"}}>
+              <option value="">— Añadir peñista manualmente —</option>
+              {disponibles.map(s=><option key={s.id} value={s.id}>{s.nombre} {s.apellidos} ({s.numero})</option>)}
+            </select>
+            <Btn small onClick={()=>anadirManual(verInscritos.id)} disabled={!socioAAnadir||anadiendo}>{anadiendo?"...":"+ Añadir"}</Btn>
+          </div>
+          <p style={{fontSize:11,color:C.muted,marginTop:-8,marginBottom:14}}>Al añadirlo aquí, la plaza queda confirmada al instante (útil si te avisó por otro medio, como WhatsApp o en persona).</p>
           {inscritos.length===0?(
             <p style={{color:C.muted,fontSize:13,marginBottom:10}}>Todavía no se ha apuntado nadie.</p>
           ):(

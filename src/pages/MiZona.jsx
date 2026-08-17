@@ -720,7 +720,9 @@ function TabActividades({actividades,setActividades,socio}){
         {proximas.map(a=>{
           const lleno=a.inscritos>=a.plazas;
           return(
-            <Card key={a.id} style={{borderTop:`3px solid ${a.inscrito?C.verde:C.border}`}}>
+            <Card key={a.id} style={{borderTop:`3px solid ${a.inscrito?C.verde:C.border}`,padding:a.cartel_url?0:16,overflow:"hidden"}}>
+              {a.cartel_url&&<img src={a.cartel_url} alt={a.nombre} style={{width:"100%",height:110,objectFit:"cover",display:"block"}}/>}
+              <div style={a.cartel_url?{padding:16}:{}}>
               <div style={{display:"flex",gap:12,alignItems:"flex-start"}}>
                 <span style={{fontSize:24,flexShrink:0}}>{tipoIcon[a.tipo]||"📌"}</span>
                 <div style={{flex:1}}>
@@ -739,6 +741,7 @@ function TabActividades({actividades,setActividades,socio}){
                     )}
                   </div>
                 </div>
+              </div>
               </div>
             </Card>
           );
