@@ -516,7 +516,7 @@ function CuentasPendientes({socios,setSocios}){
 // ══════════════════════════════════════════════════════════
 // PEÑISTAS
 // ══════════════════════════════════════════════════════════
-function Peñistas({socios,setSocios,cuotas,setCuotas,actividades,inscripciones}){
+function Peñistas({socios,setSocios,cuotas,setCuotas,actividades,inscripciones,loteria}){
   const [busqueda,setBusqueda]=useState("");
   const [filtro,setFiltro]=useState("activo");
   const [editando,setEditando]=useState(null);
@@ -720,6 +720,39 @@ function Peñistas({socios,setSocios,cuotas,setCuotas,actividades,inscripciones}
             );
           })()}
         </div>
+
+        {/* Lotería */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>🎟️ Lotería</div>
+          {(()=>{
+            const misLoterias=(loteria||[]).filter(l=>l.socio_id===editando.id);
+            if(misLoterias.length===0) return <p style={{fontSize:12,color:C.muted}}>Sin lotería repartida todavía.</p>;
+            const importeCalcLocal=(l)=>{
+              const v=Math.max(0,(Number(l.entregados)||0)-(Number(l.devueltos)||0));
+              return l.pagado?Number(l.importe_total||0):v*((Number(l.precio_base)||0)+(Number(l.recargo)||0));
+            };
+            return(
+              <div style={{border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
+                {misLoterias.map((l,idx)=>{
+                  const vendidos=Math.max(0,(Number(l.entregados)||0)-(Number(l.devueltos)||0));
+                  return(
+                    <div key={l.id} style={{padding:"7px 12px",borderBottom:idx<misLoterias.length-1?`1px solid ${C.border}`:"none",background:idx%2===0?C.blanco:"#fafafa"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                        <span style={{fontSize:12,fontWeight:600,color:C.text}}>{l.concepto}</span>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:12,fontWeight:700,color:l.pagado?C.verde:C.oro}}>{fmt(importeCalcLocal(l))}</span>
+                          <Pill text={l.pagado?`✓ ${fmtFecha(l.fecha_pago)}`:"Pendiente"} color={l.pagado?C.verde:C.oro} bg={l.pagado?C.verdeLight:C.oroLight}/>
+                        </div>
+                      </div>
+                      <div style={{fontSize:10,color:C.muted,marginTop:2}}>{l.entregados} entregados · {l.devueltos||0} devueltos{l.fecha_devolucion?` (${fmtFecha(l.fecha_devolucion)})`:""} · {vendidos} vendidos · {fmt(l.precio_base)}+{fmt(l.recargo)} recargo</div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
+        </div>
+
         <div style={{marginBottom:10}}>
           <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Estado y consentimientos</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
@@ -1337,8 +1370,8 @@ function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
   const guardarDevueltos=async()=>{
     const l=modalDevol;
     const devueltos=Math.max(0,Math.min(Number(devueltosTemp)||0, l.entregados));
-    await supabase.from("loteria").update({devueltos}).eq("id",l.id);
-    setLoteria(p=>p.map(x=>x.id===l.id?{...x,devueltos}:x));
+    await supabase.from("loteria").update({devueltos,fecha_devolucion:devueltos>0?hoy:null}).eq("id",l.id);
+    setLoteria(p=>p.map(x=>x.id===l.id?{...x,devueltos,fecha_devolucion:devueltos>0?hoy:null}:x));
     setModalDevol(null);
     ok("✅ Devolución registrada");
   };
@@ -1409,7 +1442,7 @@ function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
     <Card style={{padding:0,marginBottom:28}}>
       <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
-          <thead><tr>{["Socio","Concepto","Entreg.","Devuel.","Vend.","Precio+Rec.","A liquidar","Estado",""].map(h=><TH key={h}>{h}</TH>)}</tr></thead>
+          <thead><tr>{["Socio","Concepto","Entreg.","Devuel.","Vend.","Precio","Recargo","A liquidar","Estado",""].map(h=><TH key={h}>{h}</TH>)}</tr></thead>
           <tbody>
             {filtradas.map(l=>{
               const s=getSocio(l.socio_id);
@@ -1419,10 +1452,12 @@ function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
                 <TD style={{fontFamily:"monospace",fontSize:12}}>{l.entregados}</TD>
                 <TD style={{fontFamily:"monospace",fontSize:12}}>
                   {l.devueltos}
+                  {l.fecha_devolucion&&<div style={{fontSize:10,color:C.muted}}>{fmtFecha(l.fecha_devolucion)}</div>}
                   {!l.pagado&&<button onClick={()=>{setModalDevol(l);setDevueltosTemp(String(l.devueltos||0));}} style={{marginLeft:6,background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:11,textDecoration:"underline",fontFamily:"inherit"}}>editar</button>}
                 </TD>
                 <TD style={{fontFamily:"monospace",fontSize:12,fontWeight:700}}>{vendidos(l)}</TD>
-                <TD style={{fontFamily:"monospace",fontSize:12,color:C.gris}}>{fmt(l.precio_base)}+{fmt(l.recargo)}</TD>
+                <TD style={{fontFamily:"monospace",fontSize:12,color:C.gris}}>{fmt(l.precio_base)}</TD>
+                <TD style={{fontFamily:"monospace",fontSize:12,color:C.gris}}>{fmt(l.recargo)}</TD>
                 <TD style={{fontWeight:700,color:l.pagado?C.verde:C.oro}}>{fmt(l.pagado?l.importe_total:importeCalc(l))}</TD>
                 <TD>{l.pagado?<Pill text="✓ Liquidada" color={C.verde} bg={C.verdeLight}/>:<Pill text="⏳ Pendiente" color={C.oro} bg={C.oroLight}/>}</TD>
                 <TD>
@@ -2776,7 +2811,7 @@ export default function Junta(){
   const renderTab=()=>{
     switch(tab){
       case "dashboard":     return <Dashboard socios={socios} cuotas={cuotas} actividades={actividades} solicitudes={solicitudes} verificaciones={verificaciones} setTab={setTab}/>;
-      case "peñistas":      return <Peñistas socios={socios} setSocios={setSocios} cuotas={cuotas} setCuotas={setCuotas} actividades={actividades} inscripciones={inscripciones}/>;
+      case "peñistas":      return <Peñistas socios={socios} setSocios={setSocios} cuotas={cuotas} setCuotas={setCuotas} actividades={actividades} inscripciones={inscripciones} loteria={loteria}/>;
       case "cuentas":       return <CuentasPendientes socios={socios} setSocios={setSocios}/>;
       case "consentimientos": return <Consentimientos socios={socios} setSocios={setSocios}/>;
       case "solicitudes":   return <Solicitudes solicitudes={solicitudes} setSolicitudes={setSolicitudes} socios={socios} setSocios={setSocios} setCuotas={setCuotas}/>;
