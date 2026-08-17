@@ -660,6 +660,38 @@ function Peñistas({socios,setSocios,cuotas,setCuotas}){
           <Input label="Nº acciones" value={form.num_acciones} onChange={v=>setF("num_acciones",v)} type="number"/>
           <Input label="Nº abonado" value={form.num_abonado} onChange={v=>setF("num_abonado",v)}/>
         </div>
+
+        {/* Historial de pagos de cuotas */}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>💶 Cuotas</div>
+          {(()=>{
+            const cuotasSocio=cuotas.filter(c=>c.socio_id===editando.id).sort((a,b)=>(b.temporada||"").localeCompare(a.temporada||""));
+            const cuotaActual=cuotasSocio.find(c=>c.temporada===TEMPORADA_ACTUAL);
+            return(<>
+              <div style={{display:"flex",gap:10,marginBottom:10,flexWrap:"wrap"}}>
+                <div style={{padding:"8px 14px",borderRadius:8,background:cuotaActual?.pagado?C.verdeLight:C.oroLight,fontSize:13,fontWeight:700,color:cuotaActual?.pagado?C.verde:C.oro}}>
+                  {cuotaActual?(cuotaActual.pagado?`✅ Cuota ${TEMPORADA_ACTUAL} pagada`:`⏳ Cuota ${TEMPORADA_ACTUAL} pendiente`):`⚠️ Sin cuota ${TEMPORADA_ACTUAL} registrada`}
+                </div>
+                {cuotaActual&&<div style={{padding:"8px 14px",borderRadius:8,background:C.grisLight,fontSize:13,fontWeight:700,color:C.text}}>{fmt(cuotaActual.importe)}</div>}
+              </div>
+              {cuotasSocio.length===0?(
+                <p style={{fontSize:12,color:C.muted}}>Sin cuotas registradas todavía.</p>
+              ):(
+                <div style={{border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
+                  {cuotasSocio.map((c,i)=>(
+                    <div key={c.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 12px",borderBottom:i<cuotasSocio.length-1?`1px solid ${C.border}`:"none",background:i%2===0?C.blanco:"#fafafa"}}>
+                      <span style={{fontSize:12,color:C.text}}>{c.temporada} <span style={{color:C.muted}}>· {c.categoria}</span></span>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <span style={{fontSize:12,fontWeight:700,color:c.pagado?C.verde:C.oro}}>{fmt(c.importe)}</span>
+                        <Pill text={c.pagado?`✓ ${fmtFecha(c.fecha_pago)}`:"Pendiente"} color={c.pagado?C.verde:C.oro} bg={c.pagado?C.verdeLight:C.oroLight}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>);
+          })()}
+        </div>
         <div style={{marginBottom:10}}>
           <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Estado y consentimientos</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6,marginBottom:8}}>
