@@ -1570,6 +1570,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
     if(procesandoPago) return;
     setProcesandoPago(inscripcion.id);
     const socio=getSocio(inscripcion.socio_id);
+    const nombreParaConcepto=socio?`${socio.nombre} ${socio.apellidos}`:(inscripcion.nombre_invitado?`${inscripcion.nombre_invitado} (invitado)`:null);
     const importe=Number(actividad.precio_socio)||0;
     let movimientoId=null;
     if(importe>0){
@@ -1577,7 +1578,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
       if(ejercicioActivo){
         const mov={
           tipo:"ingreso",
-          concepto:`${actividad.nombre}${socio?` · ${socio.nombre} ${socio.apellidos}`:""}`,
+          concepto:`${actividad.nombre}${nombreParaConcepto?` · ${nombreParaConcepto}`:""}`,
           categoria:"Actividades",
           importe, fecha:hoy, ejercicio_id:ejercicioActivo.id,
         };
@@ -1613,6 +1614,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
   };
 
   const [socioAAnadir,setSocioAAnadir]=useState("");
+  const [nombreInvitado,setNombreInvitado]=useState("");
   const [anadiendo,setAnadiendo]=useState(false);
 
   const anadirManual=async(actividadId)=>{
@@ -1638,6 +1640,19 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
     ok("✅ Peñista añadido con plaza confirmada");
   };
 
+  const anadirInvitado=async(actividadId)=>{
+    if(!nombreInvitado.trim()) return;
+    setAnadiendo(true);
+    const {data,error}=await supabase.from("inscripciones").insert({
+      actividad_id:actividadId, socio_id:null, nombre_invitado:nombreInvitado.trim(), estado:"confirmada",
+    }).select();
+    setAnadiendo(false);
+    if(error){ ok("❌ Error al añadir invitado"); return; }
+    if(data?.[0]) setInscripciones(prev=>[...prev,data[0]]);
+    setNombreInvitado("");
+    ok("✅ Invitado añadido con plaza confirmada");
+  };
+
   return(<div>
     {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.verde,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14}}>{notif}</div>}
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:12}}>
@@ -1661,7 +1676,7 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
           {a.descripcion&&<p style={{fontSize:12,color:C.gris,marginBottom:8,fontStyle:"italic"}}>{a.descripcion}</p>}
           {a.precio_socio>0&&<div style={{fontSize:12,color:C.gris,marginBottom:8}}>💶 {fmt(a.precio_socio)}/persona · 🏟️ {a.plazas} plazas</div>}
           {a.aviso_total!=null&&<div style={{fontSize:11,color:C.muted,marginBottom:8}}>📧 aviso enviado a {a.aviso_enviados}/{a.aviso_total}</div>}
-          <button onClick={()=>{setVerInscritos(a);setSocioAAnadir("");}} style={{width:"100%",padding:"8px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:C.text,marginBottom:8}}>
+          <button onClick={()=>{setVerInscritos(a);setSocioAAnadir("");setNombreInvitado("");}} style={{width:"100%",padding:"8px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:C.text,marginBottom:8}}>
             👥 {inscritos.length} apuntados{a.precio_socio>0?` · ${pagados} pagado${pagados===1?"":"s"}`:""}
           </button>
           <div style={{display:"flex",gap:6,marginBottom:6}}>
@@ -1717,7 +1732,12 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
             </select>
             <Btn small onClick={()=>anadirManual(verInscritos.id)} disabled={!socioAAnadir||anadiendo}>{anadiendo?"...":"+ Añadir"}</Btn>
           </div>
-          <p style={{fontSize:11,color:C.muted,marginTop:-8,marginBottom:14}}>Al añadirlo aquí, la plaza queda confirmada al instante (útil si te avisó por otro medio, como WhatsApp o en persona).</p>
+          <div style={{display:"flex",gap:8,marginBottom:6,padding:"10px",background:C.oroLight,borderRadius:9}}>
+            <input value={nombreInvitado} onChange={e=>setNombreInvitado(e.target.value)} placeholder="Nombre de invitado (no socio)"
+              style={{flex:1,padding:"8px 10px",borderRadius:7,border:`1px solid ${C.border}`,fontSize:13,fontFamily:"inherit"}}/>
+            <Btn small color={C.oro} onClick={()=>anadirInvitado(verInscritos.id)} disabled={!nombreInvitado.trim()||anadiendo}>{anadiendo?"...":"+ Invitado"}</Btn>
+          </div>
+          <p style={{fontSize:11,color:C.muted,marginTop:-2,marginBottom:14}}>Al añadirlo aquí, la plaza queda confirmada al instante (útil si te avisó por otro medio, como WhatsApp o en persona, o si trae acompañante que no es socio).</p>
           {inscritos.length===0?(
             <p style={{color:C.muted,fontSize:13,marginBottom:10}}>Todavía no se ha apuntado nadie.</p>
           ):(
@@ -1728,8 +1748,8 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
                   <div key={i.id} style={{display:"flex",flexDirection:"column",gap:6,padding:"9px 12px",background:C.grisLight,borderRadius:9}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                       <div>
-                        <div style={{fontWeight:600,fontSize:13}}>{s?`${s.nombre} ${s.apellidos}`:"—"}</div>
-                        <div style={{fontSize:11,color:C.muted}}>{s?.numero}</div>
+                        <div style={{fontWeight:600,fontSize:13}}>{s?`${s.nombre} ${s.apellidos}`:(i.nombre_invitado?`${i.nombre_invitado} (invitado)`:"—")}</div>
+                        <div style={{fontSize:11,color:C.muted}}>{s?.numero||(i.nombre_invitado?"No socio":"")}</div>
                       </div>
                       {verInscritos.precio_socio>0?(
                         i.pagado?
@@ -2453,8 +2473,9 @@ function Informes({socios,cuotas,loteria,actividades,inscripciones,ejercicios,mo
     });
     const detalle=inscripciones.filter(i=>i.estado!=="cancelada").map(i=>{
       const a=actividades.find(x=>x.id===i.actividad_id);
+      const nombre=i.socio_id?nombreSocio(i.socio_id):(i.nombre_invitado?`${i.nombre_invitado} (invitado)`:"—");
       return{
-        "Actividad":a?.nombre||"—","Socio":nombreSocio(i.socio_id),"Nº Socio":getSocio(i.socio_id)?.numero||"",
+        "Actividad":a?.nombre||"—","Socio":nombre,"Nº Socio":i.socio_id?(getSocio(i.socio_id)?.numero||""):"No socio",
         "Estado":i.estado,"Pagado":i.pagado?"Sí":"No","Fecha pago":i.fecha_pago||"",
       };
     });
