@@ -1146,9 +1146,9 @@ export default function PanelPenista(){
   if(comprobandoSesion) return <div style={{minHeight:"100vh",background:C.granateDark,display:"flex",alignItems:"center",justifyContent:"center",color:C.blanco,fontFamily:"system-ui,sans-serif"}}>Cargando...</div>;
   if(pantalla==="pendiente") return <PantallaPendiente onLogout={logout}/>;
   if(!socio&&pantalla==="inicial") return <AccesoInicial onCuenta={()=>setPantalla("cuenta")} onTelefono={()=>setPantalla("telefono")}/>;
-  if(!socio&&pantalla==="cuenta") return <AccesoCuenta onLogin={s=>{setSocio(s);setPerfilesSession([s]);}} onMultiple={handleMultiple} onPendiente={()=>setPantalla("pendiente")} onVolver={()=>setPantalla("inicial")}/>;
-  if(!socio&&pantalla==="telefono"&&!perfilesDisponibles) return <Login onLogin={s=>{setSocio(s);setPerfilesSession([s]);}} onMultiple={handleMultiple} onVolver={()=>setPantalla("inicial")}/>;
   if(perfilesDisponibles) return <SelectorPerfil perfiles={perfilesDisponibles} onSeleccionar={handleSeleccionar} onVolver={()=>{setPerfilesDisponibles(null);}}/>;
+  if(!socio&&pantalla==="cuenta") return <AccesoCuenta onLogin={s=>{setSocio(s);setPerfilesSession([s]);}} onMultiple={handleMultiple} onPendiente={()=>setPantalla("pendiente")} onVolver={()=>setPantalla("inicial")}/>;
+  if(!socio&&pantalla==="telefono") return <Login onLogin={s=>{setSocio(s);setPerfilesSession([s]);}} onMultiple={handleMultiple} onVolver={()=>setPantalla("inicial")}/>;
 
   return(
     <div style={{minHeight:"100vh",background:"#f5f5f5",fontFamily:"system-ui,sans-serif",display:"flex",flexDirection:"column"}}>
