@@ -553,6 +553,24 @@ function TabInicio({socio,cuotas,actividades,loteria,setTab,onSolicitarCambio}){
           ))}
         </div>
       </Card>
+
+      {/* Mis actividades */}
+      <h3 style={{fontSize:12,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginTop:18,marginBottom:10}}>📅 Mis actividades</h3>
+      <Card style={{padding:0}}>
+        {(()=>{
+          const misActividades=(actividades||[]).filter(a=>a.inscrito).sort((a,b)=>(a.fecha||"").localeCompare(b.fecha||""));
+          if(misActividades.length===0) return <p style={{padding:16,color:C.muted,fontSize:13}}>Todavía no te has apuntado a ninguna actividad.</p>;
+          return misActividades.map((a,i)=>(
+            <div key={a.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 16px",borderBottom:i<misActividades.length-1?`1px solid ${C.border}`:"none"}}>
+              <div>
+                <div style={{fontWeight:600,fontSize:13,color:C.text}}>{a.nombre}</div>
+                <div style={{fontSize:11,color:C.muted}}>{a.fecha_texto||fmtFecha(a.fecha)}</div>
+              </div>
+              <Pill text={a.miEstado==="confirmada"?"✅ Confirmada":"⏳ Pendiente"} color={a.miEstado==="confirmada"?C.verde:C.oro} bg={a.miEstado==="confirmada"?C.verdeLight:C.oroLight}/>
+            </div>
+          ));
+        })()}
+      </Card>
     </div>
   );
 }
@@ -782,8 +800,8 @@ function TabActividades({actividades,setActividades,socio}){
               </button>
             )}
             {modalAct.inscrito&&(
-              <div style={{padding:"12px 16px",background:C.verdeLight,borderRadius:10,fontSize:14,color:C.verde,fontWeight:600,textAlign:"center"}}>
-                ✅ Ya estás apuntado/a a esta actividad
+              <div style={{padding:"12px 16px",background:modalAct.miEstado==="confirmada"?C.verdeLight:C.oroLight,borderRadius:10,fontSize:14,color:modalAct.miEstado==="confirmada"?C.verde:C.oro,fontWeight:600,textAlign:"center"}}>
+                {modalAct.miEstado==="confirmada"?"✅ Plaza confirmada":"⏳ Apuntado/a · pendiente de confirmar"}
               </div>
             )}
           </div>
