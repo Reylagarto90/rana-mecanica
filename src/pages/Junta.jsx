@@ -2908,6 +2908,32 @@ function Informes({socios,cuotas,loteria,actividades,inscripciones,ejercicios,mo
 
   const exportarPresupuesto=()=>{
     const wb=XLSX.utils.book_new();
+
+    // Hoja 1: Balance general — una fila por temporada + total acumulado
+    const resumenGeneral=ejercicios.map(ej=>{
+      const movs=movimientos.filter(m=>m.ejercicio_id===ej.id);
+      const ingresos=movs.filter(m=>m.tipo==="ingreso").reduce((a,m)=>a+Number(m.importe),0);
+      const gastos=movs.filter(m=>m.tipo==="gasto").reduce((a,m)=>a+Number(m.importe),0);
+      return {"Temporada":ej.nombre,"Ingresos":ingresos,"Gastos":gastos,"Resultado":ingresos-gastos};
+    });
+    const totalIngGeneral=movimientos.filter(m=>m.tipo==="ingreso").reduce((a,m)=>a+Number(m.importe),0);
+    const totalGasGeneral=movimientos.filter(m=>m.tipo==="gasto").reduce((a,m)=>a+Number(m.importe),0);
+    resumenGeneral.push({"Temporada":"TOTAL GENERAL","Ingresos":totalIngGeneral,"Gastos":totalGasGeneral,"Resultado":totalIngGeneral-totalGasGeneral});
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(resumenGeneral),"Balance general");
+
+    // Hoja 2: desglose acumulado de todas las temporadas juntas, por categoría
+    const porCategoriaGeneral={};
+    movimientos.forEach(m=>{
+      const key=`${m.tipo}|${m.categoria||"Sin categoría"}`;
+      porCategoriaGeneral[key]=(porCategoriaGeneral[key]||0)+Number(m.importe);
+    });
+    const dataGeneral=Object.entries(porCategoriaGeneral).map(([key,total])=>{
+      const [tipo,categoria]=key.split("|");
+      return {"Tipo":tipo==="ingreso"?"Ingreso":"Gasto","Categoría":categoria,"Total":total};
+    }).sort((a,b)=>b.Total-a.Total);
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(dataGeneral),"Desglose acumulado");
+
+    // Una hoja por temporada, con su propio desglose
     ejercicios.forEach(ej=>{
       const movs=movimientos.filter(m=>m.ejercicio_id===ej.id);
       const porCategoria={};
