@@ -246,11 +246,11 @@ function SelectorPerfil({perfiles,onSeleccionar,onVolver}){
 }
 
 // ── ACCESO CON USUARIO Y CONTRASEÑA (con aprobación de junta) ────────
-function AccesoCuenta({onLogin,onMultiple,onPendiente,onVolver}){
-  const [modo,setModo]=useState("entrar"); // entrar | registro
+function AccesoCuenta({onLogin,onMultiple,onPendiente,onVolver,numeroPrefill}){
+  const [modo,setModo]=useState(numeroPrefill?"registro":"entrar"); // entrar | registro
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
-  const [numero,setNumero]=useState("");
+  const [numero,setNumero]=useState(numeroPrefill||"");
   const [dni,setDni]=useState("");
   const [error,setError]=useState("");
   const [info,setInfo]=useState("");
@@ -1054,6 +1054,7 @@ export default function PanelPenista(){
   const [generandoPDF,setGenerandoPDF]=useState(false);
   const [pantalla,setPantalla]=useState("inicial"); // inicial | telefono | cuenta | pendiente
   const [comprobandoSesion,setComprobandoSesion]=useState(true);
+  const [numeroPrefill,setNumeroPrefill]=useState(null);
 
   const logout=async()=>{
     await supabase.auth.signOut().catch(()=>{});
@@ -1075,6 +1076,16 @@ export default function PanelPenista(){
             else { setSocio(socioRow); setPerfilesSession([socioRow]); }
           }
           else setPantalla("pendiente");
+        }
+      } else {
+        // Sin sesión activa: si el enlace trae un nº de socio precargado (invitación
+        // por email al actualizar datos desde Junta), ir directo a la pantalla de registro
+        const hash = window.location.hash || "";
+        const qIdx = hash.indexOf("?");
+        if(qIdx !== -1){
+          const params = new URLSearchParams(hash.slice(qIdx+1));
+          const numero = params.get("numero");
+          if(numero){ setNumeroPrefill(numero); setPantalla("cuenta"); }
         }
       }
       setComprobandoSesion(false);
@@ -1170,7 +1181,7 @@ export default function PanelPenista(){
   if(pantalla==="pendiente") return <PantallaPendiente onLogout={logout}/>;
   if(!socio&&pantalla==="inicial") return <AccesoInicial onCuenta={()=>setPantalla("cuenta")} onTelefono={()=>setPantalla("telefono")}/>;
   if(perfilesDisponibles) return <SelectorPerfil perfiles={perfilesDisponibles} onSeleccionar={handleSeleccionar} onVolver={()=>{setPerfilesDisponibles(null);}}/>;
-  if(!socio&&pantalla==="cuenta") return <AccesoCuenta onLogin={s=>{setSocio(s);setPerfilesSession([s]);}} onMultiple={handleMultiple} onPendiente={()=>setPantalla("pendiente")} onVolver={()=>setPantalla("inicial")}/>;
+  if(!socio&&pantalla==="cuenta") return <AccesoCuenta onLogin={s=>{setSocio(s);setPerfilesSession([s]);}} onMultiple={handleMultiple} onPendiente={()=>setPantalla("pendiente")} onVolver={()=>setPantalla("inicial")} numeroPrefill={numeroPrefill}/>;
   if(!socio&&pantalla==="telefono") return <Login onLogin={s=>{setSocio(s);setPerfilesSession([s]);}} onMultiple={handleMultiple} onVolver={()=>setPantalla("inicial")}/>;
 
   return(

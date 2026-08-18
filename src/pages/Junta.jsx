@@ -818,8 +818,11 @@ function Peñistas({socios,setSocios,cuotas,setCuotas,actividades,inscripciones,
     if(cambios.length>0 && datos.email){
       const fichaUrl=await generarYSubirFichaSocio(socioActualizado);
       const enlaceFicha=fichaUrl?`\n\nAquí tienes tu ficha actualizada en PDF, para revisar, firmar y entregar al Secretario si hace falta:\n${fichaUrl}`:"";
+      const yaTieneCuenta = !!editando.auth_user_id && editando.cuenta_aprobada;
+      const enlaceInvitacion = yaTieneCuenta ? "" :
+        `\n\n¿Todavía no tienes cuenta en Mi Zona? Créala aquí en un momento (con tu número de socio ya puesto):\nhttps://reylagarto90.github.io/rana-mecanica/#/mi-zona?numero=${encodeURIComponent(socioActualizado.numero)}`;
       enviarEmailJS(datos.email, "La Rana Mecánica · Tus datos han sido actualizados",
-        `Hola ${datos.nombre},\n\nLa junta directiva ha actualizado los siguientes datos de tu ficha:\n\n${cambios.map(c=>`- ${c}`).join("\n")}${enlaceFicha}\n\nSi no reconoces este cambio o tienes dudas, contacta con nosotros: penyaranamecanica@gmail.com\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`);
+        `Hola ${datos.nombre},\n\nLa junta directiva ha actualizado los siguientes datos de tu ficha:\n\n${cambios.map(c=>`- ${c}`).join("\n")}${enlaceFicha}${enlaceInvitacion}\n\nSi no reconoces este cambio o tienes dudas, contacta con nosotros: penyaranamecanica@gmail.com\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`);
     }
     ok(`✅ Datos actualizados${cambios.length>0&&datos.email?" · ficha y aviso enviados por email":""}`);
   };
