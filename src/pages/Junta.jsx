@@ -73,6 +73,126 @@ const cargarJsPDF = () => {
 
 // Genera el PDF de una actividad (datos + listado de apuntados) y lo sube a Storage.
 // Devuelve la URL firmada, o null si falla.
+// Genera la ficha completa del socio (datos + consentimientos + hueco de firma,
+// igual que la de Verificar/Alta) y la sube a Storage. Devuelve la URL firmada.
+const generarYSubirFichaSocio = async (socio) => {
+  try{
+    const jsPDFCtor = await cargarJsPDF();
+    const doc = new jsPDFCtor({ unit: "mm", format: "a4" });
+    const M = 15, W = 210 - M*2, PH = 297;
+    let y = M;
+    const check = (alto) => { if (y + alto > PH - M) { doc.addPage(); y = M; } };
+    const fmtF=(f)=>{ if(!f) return "—"; const d=String(f).split("T")[0].split("-"); return d.length===3?`${d[2]}/${d[1]}/${d[0]}`:"—"; };
+    const si_no=(v)=>v?"Sí":"No";
+    const ahora = new Date().toLocaleString("es-ES");
+    const logoB64 = await cargarLogoBase64();
+
+    doc.setFillColor(139,10,58);
+    doc.roundedRect(M, y, W, 20, 2, 2, "F");
+    if(logoB64) doc.addImage(logoB64, "JPEG", M+4, y+3, 14, 14);
+    const offCab = logoB64 ? 22 : 6;
+    doc.setTextColor(255,255,255);
+    doc.setFont("helvetica","bold"); doc.setFontSize(14);
+    doc.text("Peña Levantinista La Rana Mecánica", M+offCab, y+9);
+    doc.setFont("helvetica","normal"); doc.setFontSize(9);
+    doc.text(`Godella-Rocafort · Temporada ${TEMPORADA_ACTUAL}`, M+offCab, y+15);
+    y += 28;
+
+    const titulo=(txt)=>{
+      check(10);
+      doc.setTextColor(139,10,58); doc.setFont("helvetica","bold"); doc.setFontSize(12);
+      doc.text(txt, M, y);
+      doc.setDrawColor(139,10,58); doc.line(M, y+1.5, M+W, y+1.5);
+      y += 8;
+    };
+    let filaIdx=0;
+    const fila=(label,valor)=>{
+      const alto=7; check(alto);
+      if(filaIdx%2===0){ doc.setFillColor(248,250,252); doc.rect(M,y-4.5,W,alto,"F"); }
+      filaIdx++;
+      doc.setTextColor(30,41,59); doc.setFont("helvetica","bold"); doc.setFontSize(9.5);
+      doc.text(label, M+2, y);
+      doc.setFont("helvetica","normal");
+      doc.text(String(valor), M+2+W*0.42, y);
+      y += alto;
+    };
+    const tabla=(filas)=>{ filaIdx=0; filas.forEach(([l,v])=>fila(l,v)); y+=5; };
+    const caja=(titulo2, texto, rgb, rgbTexto)=>{
+      doc.setFont("helvetica","bold"); doc.setFontSize(9);
+      const lineasTitulo = titulo2 ? doc.splitTextToSize(titulo2, W-8) : [];
+      doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+      const lineasTexto = doc.splitTextToSize(texto, W-8);
+      const altoCaja = 6 + lineasTitulo.length*4.5 + lineasTexto.length*4 + 6;
+      check(altoCaja);
+      doc.setFillColor(...rgb);
+      doc.roundedRect(M, y-4, W, altoCaja, 2, 2, "F");
+      let yy=y+2;
+      doc.setTextColor(...rgbTexto);
+      doc.setFont("helvetica","bold"); doc.setFontSize(9);
+      lineasTitulo.forEach(l=>{ doc.text(l, M+4, yy); yy+=4.5; });
+      doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+      lineasTexto.forEach(l=>{ doc.text(l, M+4, yy); yy+=4; });
+      y += altoCaja + 6;
+    };
+
+    titulo("Datos del socio (actualizados por la Junta)");
+    tabla([
+      ["Nº Socio", socio.numero],
+      ["Nombre completo", `${socio.nombre} ${socio.apellidos}`],
+      ["DNI / NIE", socio.dni||"—"],
+      ["Fecha nacimiento", fmtF(socio.fecha_nac)],
+      ["Teléfono", socio.telefono||"—"],
+      ["Email", socio.email||"—"],
+      ["Municipio", socio.municipio||"—"],
+      ["Tipo", socio.tipo],
+      ["Cargo", socio.cargo],
+      ["Acciones Levante", socio.tiene_acciones?(socio.num_acciones||1)+" acción/es":"No"],
+      ["Nº Abonado", socio.es_abonado?(socio.num_abonado||"Sí"):"No abonado/a"],
+    ]);
+
+    titulo("Consentimientos otorgados");
+    tabla([
+      ["Tratamiento de datos (obligatorio)", si_no(socio.rgpd)],
+      ["Foto comunicación interna", si_no(socio.consent_foto_interna)],
+      ["Foto redes sociales", si_no(socio.consent_foto_rrss)],
+      ["Foto web y materiales", si_no(socio.consent_foto_web)],
+      ["Foto cesión Levante UD/Federación", si_no(socio.consent_foto_levante)],
+      ["Comunicaciones promocionales peña", si_no(socio.consent_promo_pena)],
+      ["Info patrocinadores", si_no(socio.consent_patrocinadores)],
+      ["Grupo WhatsApp", si_no(socio.consent_whatsapp)],
+    ]);
+
+    caja("", `Ficha actualizada por la Junta Directiva el ${ahora}.`, [240,253,244],[22,101,52]);
+
+    caja("Nota",
+      "Este documento debe ser impreso, firmado por el socio (o su tutor legal si es menor de edad) y entregado al Secretario de la Peña para su archivo, confirmando que los datos y consentimientos reflejados son correctos.",
+      [254,249,195],[113,63,18]);
+
+    check(30);
+    doc.setDrawColor(226,232,240); doc.line(M,y,M+W,y); y+=8;
+    doc.setTextColor(100,116,139); doc.setFont("helvetica","normal"); doc.setFontSize(9.5);
+    doc.text("Firma del socio / tutor legal (en caso de menor):", M, y); y+=16;
+    doc.setDrawColor(148,163,184); doc.line(M,y,M+70,y); y+=5;
+    doc.setFontSize(8.5); doc.setTextColor(148,163,184);
+    doc.text(`Nombre: ${socio.nombre} ${socio.apellidos}     Fecha: ___/___/______`, M, y);
+
+    const nPaginas = doc.internal.getNumberOfPages();
+    for(let i=1;i<=nPaginas;i++){
+      doc.setPage(i);
+      doc.setFontSize(8); doc.setTextColor(148,163,184);
+      doc.text("Peña Levantinista La Rana Mecánica · Godella-Rocafort · penyaranamecanica@gmail.com", 105, 290, {align:"center"});
+    }
+
+    const blob = doc.output("blob");
+    const nombreArchivo = `ficha-${crypto.randomUUID()}.pdf`;
+    const { error: errSubida } = await supabase.storage.from("fichas").upload(nombreArchivo, blob, { contentType: "application/pdf" });
+    if (errSubida) { console.error("Error subiendo ficha de socio:", errSubida); return null; }
+    const { data: firmada, error: errFirma } = await supabase.storage.from("fichas").createSignedUrl(nombreArchivo, 60*60*24*180);
+    if (errFirma) { console.error("Error firmando URL:", errFirma); return null; }
+    return firmada?.signedUrl || null;
+  }catch(e){ console.error("Error generando ficha de socio:", e); return null; }
+};
+
 const generarYSubirFichaActividad = async (actividad, inscripciones, socios) => {
   try{
     const jsPDFCtor = await cargarJsPDF();
@@ -653,8 +773,17 @@ function Peñistas({socios,setSocios,cuotas,setCuotas,actividades,inscripciones,
 
   const abrirEditar=(s)=>{setEditando(s);setForm({...s});};
 
+  const CAMPOS_NOTIFICABLES = {
+    nombre:"Nombre", apellidos:"Apellidos", dni:"DNI", telefono:"Teléfono", email:"Email", municipio:"Municipio",
+    rgpd:"RGPD firmado", foto_aut:"Foto autorizada", tiene_acciones:"Tiene acciones", num_acciones:"Nº de acciones",
+    es_abonado:"Es abonado/a", num_abonado:"Nº de abonado", verificado:"Verificado",
+    consent_foto_interna:"Foto interna", consent_foto_rrss:"Foto RRSS", consent_foto_web:"Foto web",
+    consent_foto_levante:"Foto Levante/Fed.", consent_promo_pena:"Promo peña",
+    consent_patrocinadores:"Patrocinadores", consent_whatsapp:"WhatsApp",
+  };
+
   const guardar=async()=>{
-    const {error}=await supabase.from("socios").update({
+    const datos={
       nombre:form.nombre, apellidos:form.apellidos, dni:form.dni||null,
       telefono:form.telefono||null, email:form.email||null,
       municipio:form.municipio||null, tipo:form.tipo, cargo:form.cargo,
@@ -671,11 +800,28 @@ function Peñistas({socios,setSocios,cuotas,setCuotas,actividades,inscripciones,
       consent_promo_pena:form.consent_promo_pena||false,
       consent_patrocinadores:form.consent_patrocinadores||false,
       consent_whatsapp:form.consent_whatsapp||false,
-    }).eq("id",editando.id);
+    };
+
+    // Detectar qué campos ha cambiado la junta, para avisar por email si hace falta
+    const cambios=[];
+    Object.keys(CAMPOS_NOTIFICABLES).forEach(k=>{
+      const antes=editando[k], despues=datos[k];
+      const distinto = typeof despues==="boolean" ? (!!antes)!==(!!despues) : String(antes||"")!==String(despues||"");
+      if(distinto) cambios.push(CAMPOS_NOTIFICABLES[k]);
+    });
+
+    const {error}=await supabase.from("socios").update(datos).eq("id",editando.id);
     if(error){ok("❌ Error al guardar");return;}
-    setSocios(p=>p.map(s=>s.id===editando.id?{...s,...form}:s));
+    const socioActualizado={...editando,...datos};
+    setSocios(p=>p.map(s=>s.id===editando.id?socioActualizado:s));
     setEditando(null);
-    ok("✅ Datos actualizados");
+    if(cambios.length>0 && datos.email){
+      const fichaUrl=await generarYSubirFichaSocio(socioActualizado);
+      const enlaceFicha=fichaUrl?`\n\nAquí tienes tu ficha actualizada en PDF, para revisar, firmar y entregar al Secretario si hace falta:\n${fichaUrl}`:"";
+      enviarEmailJS(datos.email, "La Rana Mecánica · Tus datos han sido actualizados",
+        `Hola ${datos.nombre},\n\nLa junta directiva ha actualizado los siguientes datos de tu ficha:\n\n${cambios.map(c=>`- ${c}`).join("\n")}${enlaceFicha}\n\nSi no reconoces este cambio o tienes dudas, contacta con nosotros: penyaranamecanica@gmail.com\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`);
+    }
+    ok(`✅ Datos actualizados${cambios.length>0&&datos.email?" · ficha y aviso enviados por email":""}`);
   };
 
   const darBaja=async(s)=>{
