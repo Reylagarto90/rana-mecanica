@@ -274,6 +274,14 @@ const generarYSubirFichaActividad = async (actividad, inscripciones, socios) => 
   }catch(e){ console.error("Error generando PDF de actividad:", e); return null; }
 };
 
+const enviarPushNotificacion = async (titulo, cuerpo, socioIds=null) => {
+  try{
+    const { error } = await supabase.functions.invoke("send-push", { body: { titulo, cuerpo, socioIds } });
+    if(error){ console.error("Error enviando push:", error); return false; }
+    return true;
+  }catch(e){ console.error("Error enviando push:", e); return false; }
+};
+
 const enviarEmailJS = async (destinatario, asunto, mensaje) => {
   try{
     const res = await fetch("https://api.emailjs.com/api/v1.0/email/send", {
@@ -774,7 +782,7 @@ function Peñistas({socios,setSocios,cuotas,setCuotas,actividades,inscripciones,
   const abrirEditar=(s)=>{setEditando(s);setForm({...s});};
 
   const CAMPOS_NOTIFICABLES = {
-    nombre:"Nombre", apellidos:"Apellidos", dni:"DNI", telefono:"Teléfono", email:"Email", municipio:"Municipio",
+    nombre:"Nombre", apellidos:"Apellidos", dni:"DNI", fecha_nac:"Fecha nacimiento", telefono:"Teléfono", email:"Email", municipio:"Municipio",
     rgpd:"RGPD firmado", foto_aut:"Foto autorizada", tiene_acciones:"Tiene acciones", num_acciones:"Nº de acciones",
     es_abonado:"Es abonado/a", num_abonado:"Nº de abonado", verificado:"Verificado",
     consent_foto_interna:"Foto interna", consent_foto_rrss:"Foto RRSS", consent_foto_web:"Foto web",
@@ -785,6 +793,7 @@ function Peñistas({socios,setSocios,cuotas,setCuotas,actividades,inscripciones,
   const guardar=async()=>{
     const datos={
       nombre:form.nombre, apellidos:form.apellidos, dni:form.dni||null,
+      fecha_nac:form.fecha_nac||null,
       telefono:form.telefono||null, email:form.email||null,
       municipio:form.municipio||null, tipo:form.tipo, cargo:form.cargo,
       rgpd:form.rgpd||false, foto_aut:form.foto_aut||false,
@@ -920,6 +929,7 @@ function Peñistas({socios,setSocios,cuotas,setCuotas,actividades,inscripciones,
           <Input label="Nombre" value={form.nombre} onChange={v=>setF("nombre",v)}/>
           <Input label="Apellidos" value={form.apellidos} onChange={v=>setF("apellidos",v)}/>
           <Input label="DNI/NIE" value={form.dni} onChange={v=>setF("dni",v)}/>
+          <Input label="Fecha nacimiento" value={form.fecha_nac} onChange={v=>setF("fecha_nac",v)} type="date"/>
           <Input label="Teléfono" value={form.telefono} onChange={v=>setF("telefono",v)} type="tel"/>
           <Input label="Email" value={form.email} onChange={v=>setF("email",v)} type="email"/>
           <Input label="Municipio" value={form.municipio} onChange={v=>setF("municipio",v)}/>
@@ -2280,6 +2290,7 @@ function Noticias({noticias,setNoticias,socios}){
       const enlaceAdjunto = adjunto_url ? `\n\nDocumento adjunto:\n${adjunto_url}` : "";
       enviados = await enviarEmailMasivo(destinatariosFinal, `La Rana Mecánica · ${form.titulo}`,
         (s)=>`Hola ${s.nombre},\n\n${form.cuerpo}${enlaceAdjunto}\n\nPara cualquier consulta: penyaranamecanica@gmail.com\n\n🐸 Matxo Llevant!\nPeña Levantinista La Rana Mecánica`);
+      enviarPushNotificacion(form.titulo, form.cuerpo.slice(0,120), destinatariosFinal.map(s=>s.id));
     }
 
     const {data,error}=await supabase.from("noticias").insert([{
