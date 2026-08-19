@@ -3,6 +3,45 @@ import { supabase } from "../supabase.js";
 
 const LOGO = "/rana-mecanica/logo.jpg";
 
+// ── Notificaciones push ──────────────────────────────────────
+const VAPID_PUBLIC_KEY = "BGIXziOFl0cwG9niVbM6kJyZUWxNqXs7xn5GIH-BGK1aVPGmBtzzBrdBlceWQ1QGrwAT1dTfhrE7_lgd7AkflPM";
+
+const urlBase64ToUint8Array = (base64String) => {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+};
+
+const activarNotificaciones = async (socioId) => {
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    return { ok: false, motivo: "Este navegador no soporta notificaciones push." };
+  }
+  const permiso = await Notification.requestPermission();
+  if (permiso !== "granted") return { ok: false, motivo: "Permiso denegado." };
+  try {
+    const registro = await navigator.serviceWorker.ready;
+    let sub = await registro.pushManager.getSubscription();
+    if (!sub) {
+      sub = await registro.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+      });
+    }
+    const json = sub.toJSON();
+    await supabase.from("push_subscriptions").upsert({
+      socio_id: socioId || null,
+      endpoint: json.endpoint,
+      p256dh: json.keys.p256dh,
+      auth: json.keys.auth,
+    }, { onConflict: "endpoint" });
+    return { ok: true };
+  } catch (e) {
+    console.error("Error activando notificaciones:", e);
+    return { ok: false, motivo: "No se pudo activar. Inténtalo de nuevo." };
+  }
+};
+
 const C = {
   granate:"#C0185A", granateDark:"#8B0A3A", granateLight:"#fceef5",
   azul:"#003DA5", azulLight:"#e8eef9",
@@ -466,9 +505,31 @@ function TabInicio({socio,cuotas,actividades,loteria,setTab,onSolicitarCambio}){
   const cuotaActual=cuotas.find(c=>c.temporada==="2026/2027");
   const actInscritas=actividades.filter(a=>a.inscrito&&!a.pasada).length;
   const proxima=actividades.filter(a=>!a.pasada).sort((a,b)=>a.fecha.localeCompare(b.fecha))[0];
+  const [estadoNotif,setEstadoNotif]=useState(typeof Notification!=="undefined"?Notification.permission:"unsupported");
+  const [activandoNotif,setActivandoNotif]=useState(false);
+
+  const onActivarNotif=async()=>{
+    setActivandoNotif(true);
+    const r=await activarNotificaciones(socio.id);
+    setActivandoNotif(false);
+    setEstadoNotif(typeof Notification!=="undefined"?Notification.permission:"unsupported");
+    if(!r.ok) alert(r.motivo||"No se pudo activar");
+  };
 
   return(
     <div>
+      {estadoNotif==="default"&&(
+        <Card style={{marginBottom:14,borderTop:`4px solid ${C.oro}`,display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          <span style={{fontSize:24}}>🔔</span>
+          <div style={{flex:1,minWidth:200}}>
+            <div style={{fontWeight:700,fontSize:14,color:C.text}}>Activa las notificaciones</div>
+            <div style={{fontSize:12,color:C.muted}}>Entérate al momento de noticias y avisos, sin mirar el email</div>
+          </div>
+          <button onClick={onActivarNotif} disabled={activandoNotif} style={{padding:"9px 16px",background:C.oro,color:C.blanco,border:"none",borderRadius:8,cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>
+            {activandoNotif?"Activando...":"Activar"}
+          </button>
+        </Card>
+      )}
       {/* Tarjeta de bienvenida */}
       <Card style={{marginBottom:14,borderTop:`4px solid ${C.granate}`,background:`linear-gradient(135deg,${C.granateLight} 0%,${C.blanco} 100%)`}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
@@ -863,7 +924,7 @@ function TabActas({actas}){
 }
 
 // ── TAB: DOCUMENTOS ───────────────────────────────────────
-function TabDocumentos({socio,generandoPDF,onDescargarFicha,misSolicitudes}){
+function TabDocumentos({socio,generandoPDF,onDescargarFicha,misSolicitudes,viaCuenta}){
   const consentimientos=[
     {k:"rgpd",                   l:"Tratamiento de datos (obligatorio)"},
     {k:"consent_foto_interna",   l:"Foto comunicación interna"},
@@ -879,6 +940,53 @@ function TabDocumentos({socio,generandoPDF,onDescargarFicha,misSolicitudes}){
     pendiente:{text:"⏳ Pendiente",color:C.oro,bg:C.oroLight},
     aprobada:{text:"✅ Aprobada",color:C.verde,bg:C.verdeLight},
     rechazada:{text:"❌ Rechazada",color:C.rojo,bg:C.rojoLight},
+  };
+
+  const [misDocumentos,setMisDocumentos]=useState([]);
+  const [subiendoDoc,setSubiendoDoc]=useState(false);
+  const [notifDoc,setNotifDoc]=useState(null);
+  const okDoc=(msg)=>{setNotifDoc(msg);setTimeout(()=>setNotifDoc(null),3000);};
+
+  useEffect(()=>{
+    if(!viaCuenta) return;
+    (async()=>{
+      const {data}=await supabase.from("documentos_socio").select("*").eq("socio_id",socio.id).order("created_at",{ascending:false});
+      setMisDocumentos(data||[]);
+    })();
+  },[socio.id,viaCuenta]);
+
+  const subirDocumento=async(e)=>{
+    const archivo=e.target.files?.[0];
+    if(!archivo) return;
+    const esValido=archivo.type.startsWith("image/")||archivo.type==="application/pdf";
+    if(!esValido){ okDoc("❌ Solo se admiten imágenes o PDF"); e.target.value=""; return; }
+    setSubiendoDoc(true);
+    const ext=archivo.name.split(".").pop();
+    const path=`${socio.id}/${crypto.randomUUID()}.${ext}`;
+    const {error:errSubida}=await supabase.storage.from("documentos_socio").upload(path,archivo,{contentType:archivo.type});
+    if(errSubida){ okDoc("❌ Error al subir"); setSubiendoDoc(false); return; }
+    const {data,error}=await supabase.from("documentos_socio").insert({
+      socio_id:socio.id, nombre_archivo:archivo.name, path, origen:"socio",
+    }).select();
+    setSubiendoDoc(false);
+    if(error){ okDoc("❌ Error al guardar"); return; }
+    if(data?.[0]) setMisDocumentos(p=>[data[0],...p]);
+    okDoc("✅ Documento subido");
+    e.target.value="";
+  };
+
+  const verDocumento=async(doc)=>{
+    const {data,error}=await supabase.storage.from("documentos_socio").createSignedUrl(doc.path,300);
+    if(error||!data?.signedUrl){ okDoc("❌ No se pudo abrir"); return; }
+    window.open(data.signedUrl,"_blank");
+  };
+
+  const borrarDocumento=async(doc)=>{
+    if(!confirm(`¿Eliminar "${doc.nombre_archivo}"?`)) return;
+    await supabase.storage.from("documentos_socio").remove([doc.path]);
+    await supabase.from("documentos_socio").delete().eq("id",doc.id);
+    setMisDocumentos(p=>p.filter(d=>d.id!==doc.id));
+    okDoc("🗑️ Eliminado");
   };
 
   return(
@@ -944,9 +1052,39 @@ function TabDocumentos({socio,generandoPDF,onDescargarFicha,misSolicitudes}){
         })}
       </Card>
 
-      <div style={{padding:"12px 16px",background:C.azulLight,borderRadius:12,fontSize:13,color:C.azul,lineHeight:1.5}}>
+      <div style={{padding:"12px 16px",background:C.azulLight,borderRadius:12,fontSize:13,color:C.azul,lineHeight:1.5,marginBottom:16}}>
         ℹ️ Para cambiar cualquier consentimiento, entra en el portal de verificación de datos o contacta con la junta directiva.
       </div>
+
+      {/* Mis documentos (solo con cuenta propia) */}
+      <h3 style={{fontSize:12,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:10}}>📎 Mis documentos</h3>
+      {notifDoc&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.verde,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14}}>{notifDoc}</div>}
+      {!viaCuenta?(
+        <Card>
+          <p style={{fontSize:13,color:C.muted,margin:0}}>🔒 Para subir y guardar tus documentos (DNI, certificados, autorizaciones...) necesitas entrar con tu cuenta propia de usuario y contraseña, no con el acceso temporal por teléfono.</p>
+        </Card>
+      ):(<>
+        <Card style={{padding:0,marginBottom:12}}>
+          {misDocumentos.length===0?(
+            <p style={{padding:16,color:C.muted,fontSize:13}}>Todavía no has subido ningún documento.</p>
+          ):misDocumentos.map((d,i)=>(
+            <div key={d.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 16px",borderBottom:i<misDocumentos.length-1?`1px solid ${C.border}`:"none"}}>
+              <div>
+                <div style={{fontWeight:600,fontSize:13,color:C.text}}>{d.nombre_archivo}</div>
+                <div style={{fontSize:11,color:C.muted}}>{d.origen==="junta"?"Subido por la junta":"Subido por ti"} · {new Date(d.created_at).toLocaleDateString("es-ES")}</div>
+              </div>
+              <div style={{display:"flex",gap:10}}>
+                <button onClick={()=>verDocumento(d)} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:12,fontWeight:600,fontFamily:"inherit"}}>Ver</button>
+                <button onClick={()=>borrarDocumento(d)} style={{background:"none",border:"none",cursor:"pointer",color:C.rojo,fontSize:13,fontFamily:"inherit"}}>🗑️</button>
+              </div>
+            </div>
+          ))}
+        </Card>
+        <label style={{display:"inline-block",padding:"9px 16px",background:subiendoDoc?"#bbb":C.granate,color:C.blanco,borderRadius:8,cursor:subiendoDoc?"not-allowed":"pointer",fontSize:13,fontWeight:700}}>
+          {subiendoDoc?"Subiendo...":"📤 Subir documento"}
+          <input type="file" accept="image/*,.pdf" onChange={subirDocumento} disabled={subiendoDoc} style={{display:"none"}}/>
+        </label>
+      </>)}
     </div>
   );
 }
@@ -1055,10 +1193,11 @@ export default function PanelPenista(){
   const [pantalla,setPantalla]=useState("inicial"); // inicial | telefono | cuenta | pendiente
   const [comprobandoSesion,setComprobandoSesion]=useState(true);
   const [numeroPrefill,setNumeroPrefill]=useState(null);
+  const [viaCuenta,setViaCuenta]=useState(false); // true si entró con usuario/contraseña (no por teléfono)
 
   const logout=async()=>{
     await supabase.auth.signOut().catch(()=>{});
-    setSocio(null);setTab("inicio");setPerfilesDisponibles(null);setPerfilesSession([]);setPantalla("inicial");
+    setSocio(null);setTab("inicio");setPerfilesDisponibles(null);setPerfilesSession([]);setPantalla("inicial");setViaCuenta(false);
   };
 
   // Al cargar: si hay una sesión de Supabase Auth activa (cuenta usuario/contraseña), entrar directo
@@ -1072,8 +1211,8 @@ export default function PanelPenista(){
             // Igual que en el login manual: si es tutor de menores, se ofrece elegir perfil
             const {data:menores}=await supabase.from("socios").select("*").eq("tutor_id",socioRow.id).eq("estado","activo");
             const perfiles=[socioRow, ...(menores||[])];
-            if(perfiles.length>1) handleMultiple(perfiles);
-            else { setSocio(socioRow); setPerfilesSession([socioRow]); }
+            if(perfiles.length>1) handleMultiple(perfiles,true);
+            else { setSocio(socioRow); setPerfilesSession([socioRow]); setViaCuenta(true); }
           }
           else setPantalla("pendiente");
         }
@@ -1092,9 +1231,10 @@ export default function PanelPenista(){
     })();
   },[]);
 
-  const handleMultiple=(perfiles)=>{
+  const handleMultiple=(perfiles,esCuenta=false)=>{
     setPerfilesSession(perfiles);
     setPerfilesDisponibles(perfiles);
+    if(esCuenta) setViaCuenta(true);
   };
 
   const handleSeleccionar=(perfil)=>{
@@ -1181,7 +1321,7 @@ export default function PanelPenista(){
   if(pantalla==="pendiente") return <PantallaPendiente onLogout={logout}/>;
   if(!socio&&pantalla==="inicial") return <AccesoInicial onCuenta={()=>setPantalla("cuenta")} onTelefono={()=>setPantalla("telefono")}/>;
   if(perfilesDisponibles) return <SelectorPerfil perfiles={perfilesDisponibles} onSeleccionar={handleSeleccionar} onVolver={()=>{setPerfilesDisponibles(null);}}/>;
-  if(!socio&&pantalla==="cuenta") return <AccesoCuenta onLogin={s=>{setSocio(s);setPerfilesSession([s]);}} onMultiple={handleMultiple} onPendiente={()=>setPantalla("pendiente")} onVolver={()=>setPantalla("inicial")} numeroPrefill={numeroPrefill}/>;
+  if(!socio&&pantalla==="cuenta") return <AccesoCuenta onLogin={s=>{setSocio(s);setPerfilesSession([s]);setViaCuenta(true);}} onMultiple={(p)=>handleMultiple(p,true)} onPendiente={()=>setPantalla("pendiente")} onVolver={()=>setPantalla("inicial")} numeroPrefill={numeroPrefill}/>;
   if(!socio&&pantalla==="telefono") return <Login onLogin={s=>{setSocio(s);setPerfilesSession([s]);}} onMultiple={handleMultiple} onVolver={()=>setPantalla("inicial")}/>;
 
   return(
@@ -1215,7 +1355,7 @@ export default function PanelPenista(){
           {tab==="actividades"&&<TabActividades actividades={actividades} setActividades={setActividades} socio={socio}/>}
           {tab==="noticias"   &&<TabNoticias noticias={noticias}/>}
           {tab==="actas"      &&<TabActas actas={actas}/>}
-          {tab==="documentos" &&<TabDocumentos  socio={socio} generandoPDF={generandoPDF} onDescargarFicha={descargarFicha} misSolicitudes={misSolicitudes}/>}
+          {tab==="documentos" &&<TabDocumentos  socio={socio} generandoPDF={generandoPDF} onDescargarFicha={descargarFicha} misSolicitudes={misSolicitudes} viaCuenta={viaCuenta}/>}
         </>)}
       </div>
 

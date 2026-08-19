@@ -763,6 +763,84 @@ function CuentasPendientes({socios,setSocios}){
 // ══════════════════════════════════════════════════════════
 // PEÑISTAS
 // ══════════════════════════════════════════════════════════
+// Documentos guardados de un socio (DNI, autorizaciones, certificados...) — visible
+// dentro de su ficha en Junta. Solo funciona para socios con cuenta propia
+// (auth_user_id), ya que la seguridad de este bucket exige sesión real.
+function DocumentosPeñista({socioId}){
+  const [documentos,setDocumentos]=useState([]);
+  const [subiendo,setSubiendo]=useState(false);
+  const [notif,setNotif]=useState(null);
+  const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
+
+  useEffect(()=>{
+    (async()=>{
+      const {data}=await supabase.from("documentos_socio").select("*").eq("socio_id",socioId).order("created_at",{ascending:false});
+      setDocumentos(data||[]);
+    })();
+  },[socioId]);
+
+  const subir=async(e)=>{
+    const archivo=e.target.files?.[0];
+    if(!archivo) return;
+    const esValido=archivo.type.startsWith("image/")||archivo.type==="application/pdf";
+    if(!esValido){ ok("❌ Solo se admiten imágenes o PDF"); e.target.value=""; return; }
+    setSubiendo(true);
+    const ext=archivo.name.split(".").pop();
+    const path=`${socioId}/${crypto.randomUUID()}.${ext}`;
+    const {error:errSubida}=await supabase.storage.from("documentos_socio").upload(path,archivo,{contentType:archivo.type});
+    if(errSubida){ ok("❌ Error al subir (¿tiene cuenta propia este socio?)"); setSubiendo(false); return; }
+    const {data,error}=await supabase.from("documentos_socio").insert({socio_id:socioId,nombre_archivo:archivo.name,path,origen:"junta"}).select();
+    setSubiendo(false);
+    if(error){ ok("❌ Error al guardar"); return; }
+    if(data?.[0]) setDocumentos(p=>[data[0],...p]);
+    ok("✅ Documento subido");
+    e.target.value="";
+  };
+
+  const ver=async(d)=>{
+    const {data,error}=await supabase.storage.from("documentos_socio").createSignedUrl(d.path,300);
+    if(error||!data?.signedUrl){ ok("❌ No se pudo abrir"); return; }
+    window.open(data.signedUrl,"_blank");
+  };
+
+  const borrar=async(d)=>{
+    if(!confirm(`¿Eliminar "${d.nombre_archivo}"?`)) return;
+    await supabase.storage.from("documentos_socio").remove([d.path]);
+    await supabase.from("documentos_socio").delete().eq("id",d.id);
+    setDocumentos(p=>p.filter(x=>x.id!==d.id));
+    ok("🗑️ Eliminado");
+  };
+
+  return(
+    <div style={{marginBottom:16}}>
+      <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>📎 Documentos</div>
+      {notif&&<div style={{fontSize:11,color:C.verde,marginBottom:6}}>{notif}</div>}
+      {documentos.length===0?(
+        <p style={{fontSize:12,color:C.muted,marginBottom:8}}>Sin documentos guardados (nota: solo pueden subirse si el socio tiene cuenta propia creada).</p>
+      ):(
+        <div style={{border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden",marginBottom:8}}>
+          {documentos.map((d,i)=>(
+            <div key={d.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"7px 12px",borderBottom:i<documentos.length-1?`1px solid ${C.border}`:"none",background:i%2===0?C.blanco:"#fafafa"}}>
+              <div>
+                <div style={{fontSize:12,fontWeight:600,color:C.text}}>{d.nombre_archivo}</div>
+                <div style={{fontSize:10,color:C.muted}}>{d.origen==="junta"?"Subido por la junta":"Subido por el socio"} · {new Date(d.created_at).toLocaleDateString("es-ES")}</div>
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>ver(d)} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:11,fontWeight:600,fontFamily:"inherit"}}>Ver</button>
+                <button onClick={()=>borrar(d)} style={{background:"none",border:"none",cursor:"pointer",color:C.rojo,fontSize:12,fontFamily:"inherit"}}>🗑️</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      <label style={{display:"inline-block",padding:"7px 14px",background:subiendo?"#bbb":C.grisLight,border:`1px solid ${C.border}`,color:C.text,borderRadius:8,cursor:subiendo?"not-allowed":"pointer",fontSize:12,fontWeight:600}}>
+        {subiendo?"Subiendo...":"📤 Subir documento"}
+        <input type="file" accept="image/*,.pdf" onChange={subir} disabled={subiendo} style={{display:"none"}}/>
+      </label>
+    </div>
+  );
+}
+
 function Peñistas({socios,setSocios,cuotas,setCuotas,actividades,inscripciones,loteria}){
   const [busqueda,setBusqueda]=useState("");
   const [filtro,setFiltro]=useState("activo");
@@ -1030,6 +1108,8 @@ function Peñistas({socios,setSocios,cuotas,setCuotas,actividades,inscripciones,
             );
           })()}
         </div>
+
+        <DocumentosPeñista socioId={editando.id}/>
 
         <div style={{marginBottom:10}}>
           <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Estado y consentimientos</div>
@@ -2043,6 +2123,51 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
     else ok("❌ Error al enviar el email");
   };
 
+  // ── Organización interna de la actividad (presupuesto + lista de tareas/compra) ──
+  const [modalOrg,setModalOrg]=useState(null); // actividad seleccionada
+  const [itemsOrg,setItemsOrg]=useState([]);
+  const [cargandoOrg,setCargandoOrg]=useState(false);
+  const [nuevoItemTexto,setNuevoItemTexto]=useState("");
+  const [nuevoItemCategoria,setNuevoItemCategoria]=useState("General");
+  const [nuevoItemEtiqueta,setNuevoItemEtiqueta]=useState("");
+  const [presupuestoOrg,setPresupuestoOrg]=useState(0);
+
+  const abrirOrganizacion=async(actividad)=>{
+    setModalOrg(actividad);
+    setPresupuestoOrg(actividad.presupuesto_asignado||0);
+    setCargandoOrg(true);
+    const {data}=await supabase.from("actividad_organizacion").select("*").eq("actividad_id",actividad.id).order("categoria").order("orden");
+    setItemsOrg(data||[]);
+    setCargandoOrg(false);
+  };
+
+  const guardarPresupuestoOrg=async()=>{
+    await supabase.from("actividades").update({presupuesto_asignado:Number(presupuestoOrg)||0}).eq("id",modalOrg.id);
+    setActividades(p=>p.map(a=>a.id===modalOrg.id?{...a,presupuesto_asignado:Number(presupuestoOrg)||0}:a));
+    ok("✅ Presupuesto actualizado");
+  };
+
+  const anadirItemOrg=async()=>{
+    if(!nuevoItemTexto.trim()) return;
+    const {data,error}=await supabase.from("actividad_organizacion").insert({
+      actividad_id:modalOrg.id, categoria:nuevoItemCategoria||"General",
+      texto:nuevoItemTexto.trim(), etiqueta:nuevoItemEtiqueta.trim()||null,
+    }).select();
+    if(error){ ok("❌ Error al añadir"); return; }
+    if(data?.[0]) setItemsOrg(p=>[...p,data[0]]);
+    setNuevoItemTexto(""); setNuevoItemEtiqueta("");
+  };
+
+  const toggleItemOrg=async(item)=>{
+    await supabase.from("actividad_organizacion").update({marcado:!item.marcado}).eq("id",item.id);
+    setItemsOrg(p=>p.map(i=>i.id===item.id?{...i,marcado:!i.marcado}:i));
+  };
+
+  const borrarItemOrg=async(item)=>{
+    await supabase.from("actividad_organizacion").delete().eq("id",item.id);
+    setItemsOrg(p=>p.filter(i=>i.id!==item.id));
+  };
+
   const anadirManual=async(actividadId)=>{
     if(!socioAAnadir) return;
     setAnadiendo(true);
@@ -2103,8 +2228,11 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
           {a.precio_socio>0&&<div style={{fontSize:12,color:C.gris,marginBottom:8}}>💶 {fmt(a.precio_socio)}/persona · 🏟️ {a.plazas} plazas</div>}
           {a.aviso_total!=null&&<div style={{fontSize:11,color:C.muted,marginBottom:8}}>📧 aviso enviado a {a.aviso_enviados}/{a.aviso_total}</div>}
           {a.observaciones&&<div style={{fontSize:11,color:C.gris,marginBottom:8,padding:"6px 8px",background:C.oroLight,borderRadius:6}}>📝 {a.observaciones}</div>}
-          <button onClick={()=>{setVerInscritos(a);setSocioAAnadir("");setNombreInvitado("");setFichaUrl(null);setEmailEnvio("");}} style={{width:"100%",padding:"8px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:C.text,marginBottom:8}}>
+          <button onClick={()=>{setVerInscritos(a);setSocioAAnadir("");setNombreInvitado("");setFichaUrl(null);setEmailEnvio("");}} style={{width:"100%",padding:"8px",background:C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:C.text,marginBottom:6}}>
             👥 {inscritos.length} apuntados{a.precio_socio>0?` · ${pagados} pagado${pagados===1?"":"s"}`:""}
+          </button>
+          <button onClick={()=>abrirOrganizacion(a)} style={{width:"100%",padding:"8px",background:C.oroLight,border:`1px solid ${C.oro}40`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",color:"#7A5B00",marginBottom:8}}>
+            🗂️ Organización{a.presupuesto_asignado>0?` · ${fmt(a.presupuesto_asignado)}`:""}
           </button>
           <div style={{display:"flex",gap:6,marginBottom:6}}>
             <button onClick={()=>abrirEditar(a)} style={{flex:1,padding:"7px",background:C.blanco,border:`1px solid ${C.border}`,borderRadius:8,cursor:"pointer",fontSize:12,fontWeight:600,fontFamily:"inherit",color:C.text}}>✏️ Editar</button>
@@ -2231,6 +2359,55 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
           </div>
         </div>);
       })()}
+    </Modal>
+
+    <Modal open={!!modalOrg} onClose={()=>setModalOrg(null)} title={modalOrg?`🗂️ Organización · ${modalOrg.nombre}`:""} width={560}>
+      {modalOrg&&(<div>
+        <div style={{display:"flex",gap:8,alignItems:"flex-end",marginBottom:18,padding:"12px 14px",background:C.grisLight,borderRadius:9}}>
+          <div style={{flex:1}}>
+            <label style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,display:"block",marginBottom:4}}>Presupuesto asignado</label>
+            <input type="number" value={presupuestoOrg} onChange={e=>setPresupuestoOrg(e.target.value)} style={{width:"100%",padding:"7px 10px",borderRadius:7,border:`1px solid ${C.border}`,fontSize:14,fontFamily:"inherit"}}/>
+          </div>
+          <Btn small onClick={guardarPresupuestoOrg}>Guardar</Btn>
+        </div>
+
+        {cargandoOrg?(
+          <p style={{fontSize:13,color:C.muted}}>Cargando...</p>
+        ):(<>
+          {Object.entries(itemsOrg.reduce((acc,item)=>{ (acc[item.categoria]=acc[item.categoria]||[]).push(item); return acc; },{})).map(([categoria,items])=>(
+            <div key={categoria} style={{marginBottom:16}}>
+              <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>{categoria} <span style={{color:C.muted,fontWeight:400}}>({items.filter(i=>i.marcado).length}/{items.length})</span></div>
+              <div style={{border:`1px solid ${C.border}`,borderRadius:8,overflow:"hidden"}}>
+                {items.map((item,idx)=>(
+                  <div key={item.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderBottom:idx<items.length-1?`1px solid ${C.border}`:"none",background:item.marcado?C.verdeLight:(idx%2===0?C.blanco:"#fafafa")}}>
+                    <input type="checkbox" checked={item.marcado} onChange={()=>toggleItemOrg(item)} style={{accentColor:C.verde,flexShrink:0}}/>
+                    <span style={{flex:1,fontSize:13,color:item.marcado?C.verde:C.text,textDecoration:item.marcado?"line-through":"none"}}>{item.texto}</span>
+                    {item.etiqueta&&<Pill text={item.etiqueta} color={C.azul} bg={C.azulLight}/>}
+                    <button onClick={()=>borrarItemOrg(item)} style={{background:"none",border:"none",cursor:"pointer",color:C.rojo,fontSize:13,fontFamily:"inherit",flexShrink:0}}>🗑️</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          {itemsOrg.length===0&&<p style={{fontSize:13,color:C.muted,marginBottom:16}}>Sin elementos en la lista todavía.</p>}
+
+          <div style={{padding:"12px 14px",background:C.grisLight,borderRadius:9}}>
+            <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>+ Añadir elemento</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:8}}>
+              <input value={nuevoItemCategoria} onChange={e=>setNuevoItemCategoria(e.target.value)} placeholder="Categoría (ej: Adultos)"
+                style={{padding:"7px 10px",borderRadius:7,border:`1px solid ${C.border}`,fontSize:13,fontFamily:"inherit"}}/>
+              <input value={nuevoItemEtiqueta} onChange={e=>setNuevoItemEtiqueta(e.target.value)} placeholder="Etiqueta (opcional, ej: Ayuntamiento)"
+                style={{padding:"7px 10px",borderRadius:7,border:`1px solid ${C.border}`,fontSize:13,fontFamily:"inherit"}}/>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <input value={nuevoItemTexto} onChange={e=>setNuevoItemTexto(e.target.value)} placeholder="Ej: 2 Bandejas de Gambas Frescas"
+                onKeyDown={e=>e.key==="Enter"&&anadirItemOrg()}
+                style={{flex:1,padding:"7px 10px",borderRadius:7,border:`1px solid ${C.border}`,fontSize:13,fontFamily:"inherit"}}/>
+              <Btn small onClick={anadirItemOrg} disabled={!nuevoItemTexto.trim()}>+ Añadir</Btn>
+            </div>
+          </div>
+        </>)}
+      </div>)}
     </Modal>
   </div>);
 }
