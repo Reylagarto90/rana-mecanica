@@ -2168,6 +2168,80 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
     setItemsOrg(p=>p.filter(i=>i.id!==item.id));
   };
 
+  const [generandoPdfOrg,setGenerandoPdfOrg]=useState(false);
+  const descargarPDFOrganizacion=async()=>{
+    setGenerandoPdfOrg(true);
+    const jsPDFCtor = await cargarJsPDF();
+    const doc = new jsPDFCtor({ unit: "mm", format: "a4" });
+    const M = 15, W = 210 - M*2, PH = 297;
+    let y = M;
+    const check=(alto)=>{ if(y+alto>PH-M){ doc.addPage(); y=M; } };
+    const logoB64 = await cargarLogoBase64();
+
+    // Cabecera
+    doc.setFillColor(139,10,58);
+    doc.roundedRect(M, y, W, 26, 2, 2, "F");
+    if(logoB64) doc.addImage(logoB64, "JPEG", M+5, y+5, 16, 16);
+    const off = logoB64 ? 25 : 6;
+    doc.setTextColor(255,215,0); doc.setFont("helvetica","bold"); doc.setFontSize(10);
+    doc.text("PEÑA LEVANTINISTA LA RANA MECÁNICA", M+off, y+8);
+    doc.setTextColor(255,255,255); doc.setFont("helvetica","bold"); doc.setFontSize(15);
+    doc.text(modalOrg.nombre, M+off, y+16);
+    doc.setFont("helvetica","normal"); doc.setFontSize(9);
+    doc.text(`LISTA DE ORGANIZACIÓN · TEMPORADA ${TEMPORADA_ACTUAL}`, M+off, y+22);
+    y += 34;
+
+    // Presupuesto
+    doc.setFillColor(248,250,252);
+    doc.setDrawColor(139,10,58);
+    doc.roundedRect(M, y, W, 14, 2, 2, "FD");
+    doc.setTextColor(30,41,59); doc.setFont("helvetica","bold"); doc.setFontSize(10);
+    doc.text("PRESUPUESTO ASIGNADO EVENTO:", M+6, y+9);
+    doc.setTextColor(139,10,58); doc.setFontSize(13);
+    doc.text(fmt(modalOrg.presupuesto_asignado||0), M+W-6, y+9, {align:"right"});
+    y += 22;
+
+    const porCategoria = itemsOrg.reduce((acc,item)=>{ (acc[item.categoria]=acc[item.categoria]||[]).push(item); return acc; },{});
+
+    Object.entries(porCategoria).forEach(([categoria,items])=>{
+      check(16);
+      doc.setTextColor(139,10,58); doc.setFont("helvetica","bold"); doc.setFontSize(11);
+      doc.text(categoria.toUpperCase(), M, y);
+      doc.setDrawColor(139,10,58); doc.line(M, y+1.5, M+W, y+1.5);
+      y += 8;
+      items.forEach((item,idx)=>{
+        check(8);
+        // Casilla
+        doc.setDrawColor(148,163,184);
+        if(item.marcado){ doc.setFillColor(26,122,60); doc.roundedRect(M,y-4,4,4,0.5,0.5,"FD"); doc.setTextColor(255,255,255); doc.setFontSize(6); doc.text("X",M+0.9,y-1); }
+        else doc.roundedRect(M,y-4,4,4,0.5,0.5,"D");
+        doc.setTextColor(item.marcado?148:30, item.marcado?163:41, item.marcado?184:59);
+        doc.setFont("helvetica","normal"); doc.setFontSize(9.5);
+        doc.text(item.texto, M+8, y);
+        if(item.etiqueta){
+          const anchoTexto = doc.getTextWidth(item.etiqueta)+6;
+          doc.setFillColor(232,238,249);
+          doc.roundedRect(M+W-anchoTexto, y-4, anchoTexto, 5.5, 1.5, 1.5, "F");
+          doc.setTextColor(24,95,165); doc.setFont("helvetica","bold"); doc.setFontSize(7.5);
+          doc.text(item.etiqueta.toUpperCase(), M+W-anchoTexto+3, y-0.3);
+        }
+        y += 7;
+      });
+      y += 4;
+    });
+
+    if(itemsOrg.length===0){ doc.setFontSize(10); doc.setTextColor(148,163,184); doc.text("Sin elementos en la lista todavía.", M, y); }
+
+    const nPaginas = doc.internal.getNumberOfPages();
+    for(let i=1;i<=nPaginas;i++){
+      doc.setPage(i);
+      doc.setFontSize(7.5); doc.setTextColor(148,163,184);
+      doc.text("Peña Levantinista La Rana Mecánica (Rocafort - Godella) · Organización Oficial", 105, 290, {align:"center"});
+    }
+    doc.save(`organizacion_${modalOrg.nombre.replace(/[^a-z0-9]/gi,"_")}_${hoy}.pdf`);
+    setGenerandoPdfOrg(false);
+  };
+
   const anadirManual=async(actividadId)=>{
     if(!socioAAnadir) return;
     setAnadiendo(true);
@@ -2363,6 +2437,9 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
 
     <Modal open={!!modalOrg} onClose={()=>setModalOrg(null)} title={modalOrg?`🗂️ Organización · ${modalOrg.nombre}`:""} width={560}>
       {modalOrg&&(<div>
+        <Btn small outline onClick={descargarPDFOrganizacion} disabled={generandoPdfOrg||cargandoOrg} style={{marginBottom:14}}>
+          {generandoPdfOrg?"Generando...":"📄 Descargar lista en PDF"}
+        </Btn>
         <div style={{display:"flex",gap:8,alignItems:"flex-end",marginBottom:18,padding:"12px 14px",background:C.grisLight,borderRadius:9}}>
           <div style={{flex:1}}>
             <label style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,display:"block",marginBottom:4}}>Presupuesto asignado</label>
