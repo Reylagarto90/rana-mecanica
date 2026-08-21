@@ -286,9 +286,10 @@ function SelectorPerfil({perfiles,onSeleccionar,onVolver}){
 
 // ── ACCESO CON USUARIO Y CONTRASEÑA (con aprobación de junta) ────────
 function AccesoCuenta({onLogin,onMultiple,onPendiente,onVolver,numeroPrefill}){
-  const [modo,setModo]=useState(numeroPrefill?"registro":"entrar"); // entrar | registro
+  const [modo,setModo]=useState(numeroPrefill?"registro":"entrar"); // entrar | registro | recuperar
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
+  const [verPassword,setVerPassword]=useState(false);
   const [numero,setNumero]=useState(numeroPrefill||"");
   const [dni,setDni]=useState("");
   const [error,setError]=useState("");
@@ -339,12 +340,23 @@ function AccesoCuenta({onLogin,onMultiple,onPendiente,onVolver,numeroPrefill}){
     setInfo("✅ Cuenta creada. La junta revisará tu solicitud y la aprobará en breve. Te avisaremos.");
   };
 
+  const recuperar=async()=>{
+    if(!email){setError("Introduce tu email");return;}
+    setLoading(true); setError(""); setInfo("");
+    const {error:errRecuperar}=await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: "https://reylagarto90.github.io/rana-mecanica/#/mi-zona",
+    });
+    setLoading(false);
+    if(errRecuperar){ setError("No se pudo enviar el email. Comprueba la dirección."); return; }
+    setInfo("✅ Si ese email tiene una cuenta creada, te llegará un enlace para crear una nueva contraseña en unos minutos. Revisa también la carpeta de spam.");
+  };
+
   return(
     <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.granateDark} 0%,#5a0020 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"system-ui,sans-serif"}}>
       <div style={{width:"100%",maxWidth:400}}>
         <div style={{textAlign:"center",marginBottom:24}}>
           <img src={LOGO} alt="La Rana Mecánica" style={{width:100,height:100,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.3)",objectFit:"cover",display:"block",margin:"0 auto 14px",boxShadow:"0 8px 32px rgba(0,0,0,0.4)"}}/>
-          <h1 style={{color:C.blanco,fontSize:21,fontWeight:700,marginBottom:6}}>{modo==="entrar"?"Accede a tu cuenta":"Crea tu cuenta"}</h1>
+          <h1 style={{color:C.blanco,fontSize:21,fontWeight:700,marginBottom:6}}>{modo==="entrar"?"Accede a tu cuenta":modo==="registro"?"Crea tu cuenta":"Recuperar contraseña"}</h1>
         </div>
 
         <div style={{background:C.blanco,borderRadius:20,padding:"26px 24px",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
@@ -362,22 +374,84 @@ function AccesoCuenta({onLogin,onMultiple,onPendiente,onVolver,numeroPrefill}){
               <input value={dni} onChange={e=>setDni(e.target.value)} placeholder="12345678A" style={{width:"100%",padding:"10px 13px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",marginBottom:12}}/>
             </>)}
             <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Email</label>
-            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu@email.com" style={{width:"100%",padding:"10px 13px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",marginBottom:12}}/>
-            <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Contraseña</label>
-            <input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&(modo==="entrar"?entrar():registrar())} style={{width:"100%",padding:"10px 13px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",marginBottom:14}}/>
+            <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="tu@email.com" onKeyDown={e=>e.key==="Enter"&&modo==="recuperar"&&recuperar()} style={{width:"100%",padding:"10px 13px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",marginBottom:12}}/>
+
+            {modo!=="recuperar"&&(<>
+              <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Contraseña</label>
+              <div style={{position:"relative",marginBottom:6}}>
+                <input type={verPassword?"text":"password"} value={password} onChange={e=>setPassword(e.target.value)} placeholder="••••••••" onKeyDown={e=>e.key==="Enter"&&(modo==="entrar"?entrar():registrar())} style={{width:"100%",padding:"10px 40px 10px 13px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+                <button type="button" onClick={()=>setVerPassword(v=>!v)} title={verPassword?"Ocultar contraseña":"Ver contraseña"} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:17,padding:4,lineHeight:1}}>
+                  {verPassword?"🙈":"👁️"}
+                </button>
+              </div>
+              {modo==="entrar"&&(
+                <div style={{textAlign:"right",marginBottom:8}}>
+                  <button onClick={()=>{setModo("recuperar");setError("");setInfo("");}} style={{background:"none",border:"none",color:C.granate,cursor:"pointer",fontSize:12,fontFamily:"inherit",textDecoration:"underline"}}>¿Has olvidado tu contraseña?</button>
+                </div>
+              )}
+            </>)}
 
             {error&&<div style={{marginBottom:12,padding:"10px 14px",background:C.rojoLight,borderRadius:10,fontSize:13,color:C.rojo}}>⚠️ {error}</div>}
 
-            <button onClick={modo==="entrar"?entrar:registrar} disabled={loading} style={{width:"100%",padding:13,background:loading?"#bbb":C.granate,color:C.blanco,border:"none",borderRadius:10,fontWeight:700,fontSize:15,cursor:loading?"not-allowed":"pointer",fontFamily:"inherit",marginBottom:10}}>
-              {loading?"Un momento...":modo==="entrar"?"Entrar":"Crear cuenta"}
+            <button onClick={modo==="entrar"?entrar:modo==="registro"?registrar:recuperar} disabled={loading} style={{width:"100%",padding:13,background:loading?"#bbb":C.granate,color:C.blanco,border:"none",borderRadius:10,fontWeight:700,fontSize:15,cursor:loading?"not-allowed":"pointer",fontFamily:"inherit",marginBottom:10}}>
+              {loading?"Un momento...":modo==="entrar"?"Entrar":modo==="registro"?"Crear cuenta":"Enviar enlace de recuperación"}
             </button>
 
-            <button onClick={()=>{setModo(modo==="entrar"?"registro":"entrar");setError("");}} style={{width:"100%",padding:10,background:"transparent",border:"none",color:C.granate,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>
-              {modo==="entrar"?"¿No tienes cuenta? Regístrate":"¿Ya tienes cuenta? Inicia sesión"}
-            </button>
+            {modo!=="recuperar"?(
+              <button onClick={()=>{setModo(modo==="entrar"?"registro":"entrar");setError("");}} style={{width:"100%",padding:10,background:"transparent",border:"none",color:C.granate,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>
+                {modo==="entrar"?"¿No tienes cuenta? Regístrate":"¿Ya tienes cuenta? Inicia sesión"}
+              </button>
+            ):(
+              <button onClick={()=>{setModo("entrar");setError("");setInfo("");}} style={{width:"100%",padding:10,background:"transparent",border:"none",color:C.granate,cursor:"pointer",fontSize:13,fontFamily:"inherit",fontWeight:600}}>
+                ← Volver a iniciar sesión
+              </button>
+            )}
           </>)}
 
           <button onClick={onVolver} style={{width:"100%",marginTop:10,padding:10,background:"none",border:"none",color:C.muted,cursor:"pointer",fontSize:12,fontFamily:"inherit"}}>← Volver</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── PANTALLA: ESTABLECER NUEVA CONTRASEÑA (tras recuperación) ────────
+function PantallaNuevaPassword({onCambiada}){
+  const [nueva,setNueva]=useState("");
+  const [confirmar,setConfirmar]=useState("");
+  const [verPassword,setVerPassword]=useState(false);
+  const [error,setError]=useState("");
+  const [loading,setLoading]=useState(false);
+
+  const cambiar=async()=>{
+    if(nueva.length<6){setError("La contraseña debe tener al menos 6 caracteres");return;}
+    if(nueva!==confirmar){setError("Las contraseñas no coinciden");return;}
+    setLoading(true); setError("");
+    const {error:errUpdate}=await supabase.auth.updateUser({password:nueva});
+    setLoading(false);
+    if(errUpdate){ setError("No se pudo cambiar la contraseña. Inténtalo de nuevo."); return; }
+    onCambiada();
+  };
+
+  return(
+    <div style={{minHeight:"100vh",background:`linear-gradient(160deg,${C.granateDark} 0%,#5a0020 100%)`,display:"flex",alignItems:"center",justifyContent:"center",padding:20,fontFamily:"system-ui,sans-serif"}}>
+      <div style={{width:"100%",maxWidth:400}}>
+        <div style={{textAlign:"center",marginBottom:24}}>
+          <img src={LOGO} alt="La Rana Mecánica" style={{width:100,height:100,borderRadius:"50%",border:"3px solid rgba(255,255,255,0.3)",objectFit:"cover",display:"block",margin:"0 auto 14px",boxShadow:"0 8px 32px rgba(0,0,0,0.4)"}}/>
+          <h1 style={{color:C.blanco,fontSize:21,fontWeight:700,marginBottom:6}}>Crea tu nueva contraseña</h1>
+        </div>
+        <div style={{background:C.blanco,borderRadius:20,padding:"26px 24px",boxShadow:"0 20px 60px rgba(0,0,0,0.4)"}}>
+          <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Nueva contraseña</label>
+          <div style={{position:"relative",marginBottom:12}}>
+            <input type={verPassword?"text":"password"} value={nueva} onChange={e=>setNueva(e.target.value)} placeholder="••••••••" style={{width:"100%",padding:"10px 40px 10px 13px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box"}}/>
+            <button type="button" onClick={()=>setVerPassword(v=>!v)} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",fontSize:17,padding:4,lineHeight:1}}>{verPassword?"🙈":"👁️"}</button>
+          </div>
+          <label style={{fontSize:11,fontWeight:600,color:C.gris,display:"block",marginBottom:5,textTransform:"uppercase",letterSpacing:0.5}}>Confirmar contraseña</label>
+          <input type={verPassword?"text":"password"} value={confirmar} onChange={e=>setConfirmar(e.target.value)} onKeyDown={e=>e.key==="Enter"&&cambiar()} placeholder="••••••••" style={{width:"100%",padding:"10px 13px",borderRadius:10,border:`1.5px solid ${C.border}`,fontSize:14,outline:"none",fontFamily:"inherit",boxSizing:"border-box",marginBottom:14}}/>
+          {error&&<div style={{marginBottom:12,padding:"10px 14px",background:C.rojoLight,borderRadius:10,fontSize:13,color:C.rojo}}>⚠️ {error}</div>}
+          <button onClick={cambiar} disabled={loading} style={{width:"100%",padding:13,background:loading?"#bbb":C.granate,color:C.blanco,border:"none",borderRadius:10,fontWeight:700,fontSize:15,cursor:loading?"not-allowed":"pointer",fontFamily:"inherit"}}>
+            {loading?"Guardando...":"Establecer contraseña"}
+          </button>
         </div>
       </div>
     </div>
@@ -1194,6 +1268,15 @@ export default function PanelPenista(){
   const [comprobandoSesion,setComprobandoSesion]=useState(true);
   const [numeroPrefill,setNumeroPrefill]=useState(null);
   const [viaCuenta,setViaCuenta]=useState(false); // true si entró con usuario/contraseña (no por teléfono)
+  const [recuperandoPass,setRecuperandoPass]=useState(false); // true si viene de un enlace de recuperación de contraseña
+
+  // Detecta el enlace de recuperación de contraseña (Supabase añade el token a la URL)
+  useEffect(()=>{
+    const {data:sub}=supabase.auth.onAuthStateChange((event)=>{
+      if(event==="PASSWORD_RECOVERY") setRecuperandoPass(true);
+    });
+    return ()=>sub?.subscription?.unsubscribe();
+  },[]);
 
   const logout=async()=>{
     await supabase.auth.signOut().catch(()=>{});
@@ -1318,6 +1401,7 @@ export default function PanelPenista(){
   const otrosPerfiles=perfilesSession.filter(p=>p.id!==socio?.id);
 
   if(comprobandoSesion) return <div style={{minHeight:"100vh",background:C.granateDark,display:"flex",alignItems:"center",justifyContent:"center",color:C.blanco,fontFamily:"system-ui,sans-serif"}}>Cargando...</div>;
+  if(recuperandoPass) return <PantallaNuevaPassword onCambiada={()=>{setRecuperandoPass(false);setPantalla("cuenta");}}/>;
   if(pantalla==="pendiente") return <PantallaPendiente onLogout={logout}/>;
   if(!socio&&pantalla==="inicial") return <AccesoInicial onCuenta={()=>setPantalla("cuenta")} onTelefono={()=>setPantalla("telefono")}/>;
   if(perfilesDisponibles) return <SelectorPerfil perfiles={perfilesDisponibles} onSeleccionar={handleSeleccionar} onVolver={()=>{setPerfilesDisponibles(null);}}/>;
