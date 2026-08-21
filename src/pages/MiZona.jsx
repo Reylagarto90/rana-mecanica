@@ -3,6 +3,17 @@ import { supabase } from "../supabase.js";
 
 const LOGO = "/rana-mecanica/logo.jpg";
 
+// Emails de la junta directiva, para poder mostrar el distintivo en su propia Mi Zona
+// (esto es solo visual, no da ningún permiso extra aquí — los permisos reales se
+// deciden en el servidor con is_junta())
+const EMAILS_JUNTA = [
+  "j.ignaciopellicer@gmail.com",
+  "arturopalaciosbuitrago@gmail.com",
+  "carlosyagogranell@gmail.com",
+  "aupa_levante@hotmail.com",
+  "martaoli21@gmail.com",
+];
+
 // ── Notificaciones push ──────────────────────────────────────
 const VAPID_PUBLIC_KEY = "BGIXziOFl0cwG9niVbM6kJyZUWxNqXs7xn5GIH-BGK1aVPGmBtzzBrdBlceWQ1QGrwAT1dTfhrE7_lgd7AkflPM";
 
@@ -1415,11 +1426,21 @@ export default function PanelPenista(){
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <img src={LOGO} alt="logo" style={{width:34,height:34,borderRadius:"50%",objectFit:"cover",border:"2px solid rgba(255,255,255,0.3)"}}/>
           <div>
-            <div style={{color:C.blanco,fontWeight:700,fontSize:13,lineHeight:1.2}}>La Rana Mecánica</div>
+            <div style={{color:C.blanco,fontWeight:700,fontSize:13,lineHeight:1.2,display:"flex",alignItems:"center",gap:6}}>
+              La Rana Mecánica
+              {EMAILS_JUNTA.includes((socio.email||"").toLowerCase())&&(
+                <span style={{background:C.oro,color:C.granateDark,fontSize:9,fontWeight:800,padding:"2px 6px",borderRadius:20,letterSpacing:0.3}}>🏛️ JUNTA</span>
+              )}
+            </div>
             <div style={{color:"rgba(255,255,255,0.5)",fontSize:10}}>{socio.nombre} · {socio.numero}</div>
           </div>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          {EMAILS_JUNTA.includes((socio.email||"").toLowerCase())&&(
+            <a href="#/junta" style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.25)",color:C.blanco,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontFamily:"inherit",textDecoration:"none",display:"flex",alignItems:"center",gap:5}}>
+              🏛️ Panel Junta
+            </a>
+          )}
           {otrosPerfiles.length>0&&(
             <button onClick={()=>setPerfilesDisponibles(perfilesSession)} style={{background:"rgba(255,255,255,0.15)",border:"1px solid rgba(255,255,255,0.25)",color:C.blanco,borderRadius:8,padding:"6px 10px",cursor:"pointer",fontSize:11,fontFamily:"inherit",display:"flex",alignItems:"center",gap:5}}>
               👥 Cambiar perfil
