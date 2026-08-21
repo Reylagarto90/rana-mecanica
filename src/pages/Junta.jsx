@@ -471,6 +471,7 @@ const TABS = [
   {id:"actividades",  label:"Actividades",   icon:"📅"},
   {id:"noticias",     label:"Noticias",      icon:"📢"},
   {id:"actas",        label:"Actas",         icon:"📜"},
+  {id:"asambleas",    label:"Asambleas",     icon:"🗳️"},
   {id:"auditoria",    label:"Auditoría",     icon:"🔍"},
   {id:"tesoreria",    label:"Tesorería",     icon:"📒"},
   {id:"informes",     label:"Informes",      icon:"📊"},
@@ -2655,6 +2656,352 @@ function Noticias({noticias,setNoticias,socios}){
 // ══════════════════════════════════════════════════════════
 // ACTAS
 // ══════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════
+// ASAMBLEAS Y VOTACIONES
+// ══════════════════════════════════════════════════════════
+function Asambleas({asambleas,setAsambleas}){
+  const [modal,setModal]=useState(false);
+  const [editando,setEditando]=useState(null);
+  const [form,setForm]=useState({titulo:"",fecha:hoy,orden_dia:"",fecha_apertura_votos:"",fecha_cierre_votos:""});
+  const [detalle,setDetalle]=useState(null);
+  const [notif,setNotif]=useState(null);
+  const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
+
+  const abrirNueva=()=>{ setEditando(null); setForm({titulo:"",fecha:hoy,orden_dia:"",fecha_apertura_votos:"",fecha_cierre_votos:""}); setModal(true); };
+  const abrirEditar=(a)=>{
+    setEditando(a);
+    setForm({
+      titulo:a.titulo, fecha:a.fecha, orden_dia:a.orden_dia||"",
+      fecha_apertura_votos: a.fecha_apertura_votos ? a.fecha_apertura_votos.slice(0,16) : "",
+      fecha_cierre_votos: a.fecha_cierre_votos ? a.fecha_cierre_votos.slice(0,16) : "",
+    });
+    setModal(true);
+  };
+
+  const guardar=async()=>{
+    if(!form.titulo.trim()||!form.fecha) return;
+    const datos={
+      titulo:form.titulo, fecha:form.fecha, orden_dia:form.orden_dia||null,
+      fecha_apertura_votos: form.fecha_apertura_votos ? new Date(form.fecha_apertura_votos).toISOString() : null,
+      fecha_cierre_votos: form.fecha_cierre_votos ? new Date(form.fecha_cierre_votos).toISOString() : null,
+    };
+    if(editando){
+      const {error}=await supabase.from("asambleas").update(datos).eq("id",editando.id);
+      if(error){ok("❌ Error al guardar");return;}
+      setAsambleas(p=>p.map(a=>a.id===editando.id?{...a,...datos}:a));
+    }else{
+      const {data,error}=await supabase.from("asambleas").insert([datos]).select();
+      if(error){ok("❌ Error al crear");return;}
+      setAsambleas(p=>data[0]?[data[0],...p.filter(x=>x.id!==data[0].id)]:p);
+    }
+    setModal(false);
+    ok("✅ Guardado");
+  };
+
+  const eliminar=async(a)=>{
+    if(!confirm(`¿Eliminar la asamblea "${a.titulo}"? Se borrarán también sus puntos de votación y los votos emitidos.`)) return;
+    await supabase.from("asambleas").delete().eq("id",a.id);
+    setAsambleas(p=>p.filter(x=>x.id!==a.id));
+    ok("🗑️ Eliminada");
+  };
+
+  const anteriorDe=(a)=>{
+    const anteriores=asambleas.filter(x=>x.id!==a.id && x.fecha<a.fecha).sort((x,y)=>y.fecha.localeCompare(x.fecha));
+    return anteriores[0]||null;
+  };
+
+  const estadoDe=(a)=>{
+    if(!a.fecha_apertura_votos) return {text:"Sin configurar",color:C.gris,bg:C.grisLight};
+    const ahora=new Date(), apertura=new Date(a.fecha_apertura_votos), cierre=a.fecha_cierre_votos?new Date(a.fecha_cierre_votos):null;
+    if(ahora<apertura) return {text:"⏳ Pendiente de abrir",color:C.oro,bg:C.oroLight};
+    if(cierre && ahora>cierre) return a.resultados_publicados?{text:"✅ Publicada",color:C.verde,bg:C.verdeLight}:{text:"🔒 Cerrada",color:C.gris,bg:C.grisLight};
+    return {text:"🟢 Votación abierta",color:C.verde,bg:C.verdeLight};
+  };
+
+  return(<div>
+    {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.verde,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:14}}>{notif}</div>}
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18,flexWrap:"wrap",gap:12}}>
+      <h2 style={{fontSize:20,fontWeight:700,color:C.granateDark}}>🗳️ Asambleas</h2>
+      <Btn onClick={abrirNueva}>+ Nueva asamblea</Btn>
+    </div>
+
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(280px,1fr))",gap:14}}>
+      {asambleas.map(a=>{
+        const est=estadoDe(a);
+        return(
+          <Card key={a.id} style={{display:"flex",flexDirection:"column",gap:8}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+              <div style={{fontWeight:700,fontSize:15,color:C.text}}>{a.titulo}</div>
+              <div style={{display:"flex",gap:6}}>
+                <button onClick={()=>abrirEditar(a)} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:13}}>✏️</button>
+                <button onClick={()=>eliminar(a)} style={{background:"none",border:"none",cursor:"pointer",color:C.rojo,fontSize:14}}>🗑️</button>
+              </div>
+            </div>
+            <div style={{fontSize:12,color:C.muted}}>{fmtFecha(a.fecha)}</div>
+            <Pill text={est.text} color={est.color} bg={est.bg}/>
+            <Btn small onClick={()=>setDetalle(a)}>Gestionar →</Btn>
+          </Card>
+        );
+      })}
+      {asambleas.length===0&&<p style={{color:C.muted,fontSize:13}}>Todavía no hay ninguna asamblea creada.</p>}
+    </div>
+
+    <Modal open={modal} onClose={()=>setModal(false)} title={editando?"Editar asamblea":"Nueva asamblea"} width={560}>
+      <Input label="Título" value={form.titulo} onChange={v=>setForm(f=>({...f,titulo:v}))} placeholder="Ej: Asamblea General Ordinaria 2027" required/>
+      <Input label="Fecha de la asamblea" value={form.fecha} onChange={v=>setForm(f=>({...f,fecha:v}))} type="date" required/>
+      <div style={{marginBottom:14}}>
+        <label style={{fontSize:13,fontWeight:600,color:C.gris,display:"block",marginBottom:6}}>Orden del día</label>
+        <textarea value={form.orden_dia} onChange={e=>setForm(f=>({...f,orden_dia:e.target.value}))} rows={5}
+          placeholder={"1. Lectura y aprobación del acta anterior\n2. Aprobación de cuentas\n3. Ruegos y preguntas"}
+          style={{width:"100%",padding:"9px 12px",borderRadius:8,border:`1.5px solid ${C.border}`,fontSize:13,outline:"none",fontFamily:"inherit",boxSizing:"border-box",resize:"vertical"}}/>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 14px"}}>
+        <Input label="Apertura de la votación" value={form.fecha_apertura_votos} onChange={v=>setForm(f=>({...f,fecha_apertura_votos:v}))} type="datetime-local"/>
+        <Input label="Cierre de la votación" value={form.fecha_cierre_votos} onChange={v=>setForm(f=>({...f,fecha_cierre_votos:v}))} type="datetime-local"/>
+      </div>
+      <p style={{fontSize:12,color:C.muted,marginBottom:16}}>Puedes dejar la apertura antes de la fecha de la asamblea, para que quien no pueda asistir vote igualmente. Los puntos de votación se añaden después, desde "Gestionar".</p>
+      <div style={{display:"flex",gap:10}}>
+        <Btn outline onClick={()=>setModal(false)} style={{flex:1}}>Cancelar</Btn>
+        <Btn onClick={guardar} style={{flex:1}}>{editando?"Guardar cambios":"Crear asamblea"}</Btn>
+      </div>
+    </Modal>
+
+    {detalle&&(
+      <DetalleAsamblea
+        asamblea={asambleas.find(x=>x.id===detalle.id)||detalle}
+        anterior={anteriorDe(detalle)}
+        onCerrar={()=>setDetalle(null)}
+        onActualizar={(cambios)=>setAsambleas(p=>p.map(x=>x.id===detalle.id?{...x,...cambios}:x))}
+      />
+    )}
+  </div>);
+}
+
+function DetalleAsamblea({asamblea,anterior,onCerrar,onActualizar}){
+  const [puntos,setPuntos]=useState([]);
+  const [cargando,setCargando]=useState(true);
+  const [modalPunto,setModalPunto]=useState(false);
+  const [editandoPunto,setEditandoPunto]=useState(null);
+  const [formPunto,setFormPunto]=useState({titulo:"",descripcion:"",tipo:"si_no",opcionesTexto:"Sí, No, Abstención"});
+  const [recuentos,setRecuentos]=useState({});
+  const [notif,setNotif]=useState(null);
+  const [subiendoActa,setSubiendoActa]=useState(false);
+  const [aperturaInput,setAperturaInput]=useState(asamblea.fecha_apertura_votos?asamblea.fecha_apertura_votos.slice(0,16):"");
+  const [cierreInput,setCierreInput]=useState(asamblea.fecha_cierre_votos?asamblea.fecha_cierre_votos.slice(0,16):"");
+  const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
+
+  const cargarPuntos=async()=>{
+    const {data}=await supabase.from("puntos_votacion").select("*").eq("asamblea_id",asamblea.id).order("orden");
+    setPuntos(data||[]);
+    setCargando(false);
+  };
+  useEffect(()=>{ cargarPuntos(); },[asamblea.id]);
+
+  // Recuento en vivo: se consulta cada 4 segundos mientras esta ventana está abierta
+  useEffect(()=>{
+    if(puntos.length===0) return;
+    let activo=true;
+    const cargarRecuentos=async()=>{
+      const nuevos={};
+      for(const p of puntos){
+        const {data}=await supabase.rpc("recuento_punto",{p_punto_id:p.id});
+        nuevos[p.id]=data||[];
+      }
+      if(activo) setRecuentos(nuevos);
+    };
+    cargarRecuentos();
+    const intervalo=setInterval(cargarRecuentos,4000);
+    return ()=>{ activo=false; clearInterval(intervalo); };
+  },[puntos]);
+
+  const abrirNuevoPunto=()=>{ setEditandoPunto(null); setFormPunto({titulo:"",descripcion:"",tipo:"si_no",opcionesTexto:"Sí, No, Abstención"}); setModalPunto(true); };
+  const abrirEditarPunto=(p)=>{ setEditandoPunto(p); setFormPunto({titulo:p.titulo,descripcion:p.descripcion||"",tipo:p.tipo,opcionesTexto:(p.opciones||[]).join(", ")}); setModalPunto(true); };
+
+  const guardarPunto=async()=>{
+    if(!formPunto.titulo.trim()) return;
+    const opciones=formPunto.opcionesTexto.split(",").map(s=>s.trim()).filter(Boolean);
+    if(opciones.length<2){ ok("❌ Pon al menos 2 opciones separadas por coma"); return; }
+    const datos={
+      asamblea_id:asamblea.id, titulo:formPunto.titulo, descripcion:formPunto.descripcion||null,
+      tipo:formPunto.tipo, opciones, orden: editandoPunto?editandoPunto.orden:puntos.length,
+    };
+    if(editandoPunto){
+      const {error}=await supabase.from("puntos_votacion").update(datos).eq("id",editandoPunto.id);
+      if(error){ok("❌ Error");return;}
+      setPuntos(p=>p.map(x=>x.id===editandoPunto.id?{...x,...datos}:x));
+    }else{
+      const {data,error}=await supabase.from("puntos_votacion").insert([datos]).select();
+      if(error){ok("❌ Error");return;}
+      if(data?.[0]) setPuntos(p=>[...p,data[0]]);
+    }
+    setModalPunto(false);
+  };
+
+  const borrarPunto=async(p)=>{
+    if(!confirm(`¿Eliminar el punto "${p.titulo}"? Se perderán los votos ya emitidos en él.`)) return;
+    await supabase.from("puntos_votacion").delete().eq("id",p.id);
+    setPuntos(prev=>prev.filter(x=>x.id!==p.id));
+  };
+
+  const guardarVentana=async(campo,valor)=>{
+    const iso=valor?new Date(valor).toISOString():null;
+    await supabase.from("asambleas").update({[campo]:iso}).eq("id",asamblea.id);
+    onActualizar({[campo]:iso});
+    ok("✅ Actualizado");
+  };
+
+  const publicarResultados=async()=>{
+    if(!confirm("¿Publicar los resultados finales? A partir de ahora todos los peñistas podrán verlos en Mi Zona.")) return;
+    await supabase.from("asambleas").update({resultados_publicados:true}).eq("id",asamblea.id);
+    onActualizar({resultados_publicados:true});
+    ok("✅ Resultados publicados");
+  };
+  const despublicar=async()=>{
+    await supabase.from("asambleas").update({resultados_publicados:false}).eq("id",asamblea.id);
+    onActualizar({resultados_publicados:false});
+    ok("Ocultados de nuevo para los peñistas");
+  };
+
+  const subirActa=async(e)=>{
+    const archivo=e.target.files?.[0];
+    if(!archivo) return;
+    setSubiendoActa(true);
+    const nombreArchivo=`${crypto.randomUUID()}.pdf`;
+    const {error:errSubida}=await supabase.storage.from("actas").upload(nombreArchivo,archivo,{contentType:"application/pdf"});
+    if(errSubida){ ok("❌ Error al subir"); setSubiendoActa(false); return; }
+    const {data:firmada}=await supabase.storage.from("actas").createSignedUrl(nombreArchivo,60*60*24*365*2);
+    const datos={acta_pdf_url:firmada?.signedUrl||null, acta_pdf_path:nombreArchivo};
+    await supabase.from("asambleas").update(datos).eq("id",asamblea.id);
+    onActualizar(datos);
+    setSubiendoActa(false);
+    ok("✅ Acta subida");
+  };
+
+  const ahora=new Date();
+  const apertura=asamblea.fecha_apertura_votos?new Date(asamblea.fecha_apertura_votos):null;
+  const cierre=asamblea.fecha_cierre_votos?new Date(asamblea.fecha_cierre_votos):null;
+  const estadoVotacion=!apertura?"sin-configurar":ahora<apertura?"pendiente":(cierre&&ahora>cierre)?"cerrada":"abierta";
+  const estadoInfo={
+    "sin-configurar":{text:"Sin configurar todavía",color:C.gris,bg:C.grisLight},
+    "pendiente":{text:"⏳ Pendiente de abrir",color:C.oro,bg:C.oroLight},
+    "abierta":{text:"🟢 Votación abierta ahora mismo",color:C.verde,bg:C.verdeLight},
+    "cerrada":{text:"🔒 Votación cerrada",color:C.gris,bg:C.grisLight},
+  }[estadoVotacion];
+
+  return(
+    <Modal open onClose={onCerrar} title={`🗳️ ${asamblea.titulo}`} width={680}>
+      {notif&&<div style={{marginBottom:12,padding:"9px 13px",background:C.verdeLight,color:C.verde,borderRadius:8,fontSize:13,fontWeight:600}}>{notif}</div>}
+
+      {anterior&&(
+        <div style={{marginBottom:14,padding:"9px 13px",background:C.azulLight,borderRadius:8,fontSize:12,color:C.azul}}>
+          📜 Asamblea anterior: <strong>{anterior.titulo}</strong> ({fmtFecha(anterior.fecha)}){anterior.acta_pdf_url&&<> · <a href={anterior.acta_pdf_url} target="_blank" rel="noreferrer" style={{color:C.azul}}>Ver su acta</a></>}
+        </div>
+      )}
+
+      <div style={{marginBottom:16}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:6}}>Orden del día</div>
+        <p style={{whiteSpace:"pre-wrap",fontSize:13,color:C.text,margin:0}}>{asamblea.orden_dia||"Sin definir todavía — edítalo desde el botón ✏️ del listado."}</p>
+      </div>
+
+      <div style={{marginBottom:16,padding:"12px 14px",background:C.grisLight,borderRadius:10}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5}}>Ventana de votación</div>
+          <Pill text={estadoInfo.text} color={estadoInfo.color} bg={estadoInfo.bg}/>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:"0 10px",alignItems:"end"}}>
+          <Input label="Apertura" value={aperturaInput} onChange={setAperturaInput} type="datetime-local"/>
+          <Input label="Cierre" value={cierreInput} onChange={setCierreInput} type="datetime-local"/>
+          <div style={{marginBottom:14}}>
+            <Btn small onClick={()=>{guardarVentana("fecha_apertura_votos",aperturaInput);guardarVentana("fecha_cierre_votos",cierreInput);}}>Guardar</Btn>
+          </div>
+        </div>
+      </div>
+
+      <div style={{marginBottom:16}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5}}>Puntos de votación</div>
+          <Btn small onClick={abrirNuevoPunto}>+ Añadir punto</Btn>
+        </div>
+        {cargando?(
+          <p style={{fontSize:13,color:C.muted}}>Cargando...</p>
+        ):puntos.length===0?(
+          <p style={{fontSize:13,color:C.muted}}>Todavía no hay ningún punto de votación en esta asamblea.</p>
+        ):puntos.map(p=>{
+          const filas=recuentos[p.id]||[];
+          const totalGeneral=filas.reduce((a,r)=>a+Number(r.total),0);
+          return(
+            <div key={p.id} style={{border:`1px solid ${C.border}`,borderRadius:9,padding:"11px 14px",marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div style={{fontWeight:600,fontSize:13,color:C.text}}>{p.titulo}</div>
+                <div style={{display:"flex",gap:8,flexShrink:0}}>
+                  <button onClick={()=>abrirEditarPunto(p)} style={{background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:12}}>✏️</button>
+                  <button onClick={()=>borrarPunto(p)} style={{background:"none",border:"none",cursor:"pointer",color:C.rojo,fontSize:13}}>🗑️</button>
+                </div>
+              </div>
+              {p.descripcion&&<p style={{fontSize:12,color:C.muted,margin:"4px 0"}}>{p.descripcion}</p>}
+              <div style={{marginTop:8}}>
+                {totalGeneral===0?(
+                  <span style={{fontSize:11,color:C.muted}}>Sin votos todavía</span>
+                ):(p.opciones||[]).map(op=>{
+                  const fila=filas.find(r=>r.opcion===op);
+                  const total=fila?Number(fila.total):0;
+                  const pct=totalGeneral>0?Math.round(total/totalGeneral*100):0;
+                  return(
+                    <div key={op} style={{marginBottom:5}}>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.gris,marginBottom:2}}>
+                        <span>{op}</span><span>{total} voto{total===1?"":"s"} ({pct}%)</span>
+                      </div>
+                      <div style={{height:6,background:C.border,borderRadius:3,overflow:"hidden"}}>
+                        <div style={{height:6,width:`${pct}%`,background:C.granate,borderRadius:3,transition:"width 0.3s"}}/>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div style={{fontSize:10,color:C.muted,marginTop:4}}>Total de votos emitidos: {totalGeneral}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div style={{marginBottom:16,padding:"12px 14px",background:asamblea.resultados_publicados?C.verdeLight:C.grisLight,borderRadius:10}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Resultados finales</div>
+        {asamblea.resultados_publicados?(<>
+          <p style={{fontSize:13,color:C.verde,fontWeight:600,marginBottom:8}}>✅ Publicados — visibles para todos los peñistas en Mi Zona.</p>
+          <Btn small outline onClick={despublicar}>Ocultar de nuevo</Btn>
+        </>):(<>
+          <p style={{fontSize:12,color:C.muted,marginBottom:8}}>Los peñistas no ven ningún recuento hasta que publiques los resultados finales.</p>
+          <Btn small color={C.verde} onClick={publicarResultados}>📢 Publicar resultados a los peñistas</Btn>
+        </>)}
+      </div>
+
+      <div>
+        <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.5,marginBottom:8}}>Acta de esta asamblea (PDF)</div>
+        {asamblea.acta_pdf_url&&<div style={{marginBottom:8}}><a href={asamblea.acta_pdf_url} target="_blank" rel="noreferrer" style={{color:C.azul,fontSize:13}}>📄 Ver acta ya subida</a></div>}
+        <label style={{display:"inline-block",padding:"8px 14px",background:subiendoActa?"#bbb":C.grisLight,border:`1px solid ${C.border}`,borderRadius:8,cursor:subiendoActa?"not-allowed":"pointer",fontSize:12,fontWeight:600,color:C.text}}>
+          {subiendoActa?"Subiendo...":asamblea.acta_pdf_url?"📤 Sustituir acta":"📤 Subir acta"}
+          <input type="file" accept="application/pdf" onChange={subirActa} disabled={subiendoActa} style={{display:"none"}}/>
+        </label>
+      </div>
+
+      <Modal open={modalPunto} onClose={()=>setModalPunto(false)} title={editandoPunto?"Editar punto":"Nuevo punto de votación"}>
+        <Input label="Título" value={formPunto.titulo} onChange={v=>setFormPunto(f=>({...f,titulo:v}))} placeholder="Ej: Aprobación del presupuesto 2027" required/>
+        <Input label="Descripción (opcional)" value={formPunto.descripcion} onChange={v=>setFormPunto(f=>({...f,descripcion:v}))}/>
+        <Select label="Tipo de pregunta" value={formPunto.tipo} onChange={v=>setFormPunto(f=>({...f,tipo:v}))}
+          options={[{value:"si_no",label:"Sí / No / Abstención"},{value:"opcion_multiple",label:"Opción múltiple"}]}/>
+        <Input label="Opciones (separadas por coma)" value={formPunto.opcionesTexto} onChange={v=>setFormPunto(f=>({...f,opcionesTexto:v}))} placeholder="Sí, No, Abstención"/>
+        <div style={{display:"flex",gap:10,marginTop:10}}>
+          <Btn outline onClick={()=>setModalPunto(false)} style={{flex:1}}>Cancelar</Btn>
+          <Btn onClick={guardarPunto} style={{flex:1}}>Guardar</Btn>
+        </div>
+      </Modal>
+    </Modal>
+  );
+}
+
+// ══════════════════════════════════════════════════════════
+// ACTAS
+// ══════════════════════════════════════════════════════════
 function Actas({actas,setActas,socios}){
   const [modal,setModal]=useState(false);
   const [editandoActa,setEditandoActa]=useState(null);
@@ -3705,6 +4052,7 @@ export default function Junta(){
   const [actividades,setActividades]=useState([]);
   const [inscripciones,setInscripciones]=useState([]);
   const [actas,setActas]=useState([]);
+  const [asambleas,setAsambleas]=useState([]);
   const [noticias,setNoticias]=useState([]);
   const [solicitudes,setSolicitudes]=useState([]);
   const [verificaciones,setVerificaciones]=useState([]);
@@ -3719,7 +4067,7 @@ export default function Junta(){
       try{
         const [
           {data:s},{data:c},{data:lot},{data:a},{data:insc},{data:sol},{data:ver},
-          {data:ej},{data:mov},{data:tar},{data:act},{data:not}
+          {data:ej},{data:mov},{data:tar},{data:act},{data:not},{data:asam}
         ] = await Promise.all([
           supabase.from("socios").select("*").order("numero"),
           supabase.from("cuotas").select("*").order("created_at",{ascending:false}),
@@ -3733,10 +4081,12 @@ export default function Junta(){
           supabase.from("tarifas").select("*").order("id"),
           supabase.from("actas").select("*").order("fecha",{ascending:false}),
           supabase.from("noticias").select("*").order("created_at",{ascending:false}),
+          supabase.from("asambleas").select("*").order("fecha",{ascending:false}),
         ]);
         setSocios(s||[]); setCuotas(c||[]); setLoteria(lot||[]); setActividades(a||[]); setInscripciones(insc||[]);
         setSolicitudes(sol||[]); setVerificaciones(ver||[]);
         setEjercicios(ej||[]); setMovimientos(mov||[]); setTarifas(tar||[]); setActas(act||[]); setNoticias(not||[]);
+        setAsambleas(asam||[]);
       }catch(e){
         setError("Error al cargar datos de Supabase");
         console.error(e);
@@ -3800,6 +4150,7 @@ export default function Junta(){
       case "loteria":       return <Loteria socios={socios} loteria={loteria} setLoteria={setLoteria} ejercicios={ejercicios} setMovimientos={setMovimientos}/>;
       case "actividades":   return <Actividades socios={socios} actividades={actividades} setActividades={setActividades} inscripciones={inscripciones} setInscripciones={setInscripciones} ejercicios={ejercicios} setMovimientos={setMovimientos}/>;
       case "actas":         return <Actas actas={actas} setActas={setActas} socios={socios}/>;
+      case "asambleas":     return <Asambleas asambleas={asambleas} setAsambleas={setAsambleas}/>;
       case "auditoria":     return <Auditoria/>;
       case "noticias":      return <Noticias noticias={noticias} setNoticias={setNoticias} socios={socios}/>;
       case "tesoreria":     return <Tesoreria ejercicios={ejercicios} setEjercicios={setEjercicios} movimientos={movimientos} setMovimientos={setMovimientos}/>;

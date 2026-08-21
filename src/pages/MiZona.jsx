@@ -254,6 +254,7 @@ const TABS=[
   {id:"actividades",label:"Actividades",icon:"📅"},
   {id:"noticias",  label:"Noticias",    icon:"📢"},
   {id:"actas",     label:"Actas",       icon:"📜"},
+  {id:"asambleas", label:"Asambleas",   icon:"🗳️"},
   {id:"documentos",label:"Documentos",  icon:"📁"},
 ];
 
@@ -1008,6 +1009,139 @@ function TabActas({actas}){
   );
 }
 
+// ── TAB: ASAMBLEAS Y VOTACIONES ───────────────────────────
+function TabAsambleas({asambleas,socio}){
+  return(
+    <div>
+      <h2 style={{fontSize:18,fontWeight:700,color:C.granateDark,marginBottom:16}}>🗳️ Asambleas</h2>
+      {asambleas.length===0?(
+        <p style={{color:C.muted,fontSize:13}}>Todavía no hay ninguna asamblea publicada.</p>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {asambleas.map(a=><TarjetaAsamblea key={a.id} asamblea={a} socio={socio}/>)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TarjetaAsamblea({asamblea,socio}){
+  const [puntos,setPuntos]=useState([]);
+  const [cargando,setCargando]=useState(true);
+  const [misVotos,setMisVotos]=useState({}); // punto_id -> true/false (ya votó)
+  const [votando,setVotando]=useState(null); // punto_id en curso
+  const [recuentos,setRecuentos]=useState({});
+  const [notif,setNotif]=useState(null);
+  const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3500);};
+
+  useEffect(()=>{
+    (async()=>{
+      const {data}=await supabase.from("puntos_votacion").select("*").eq("asamblea_id",asamblea.id).order("orden");
+      setPuntos(data||[]);
+      setCargando(false);
+      // Comprobar, para cada punto, si este socio ya ha votado (sin revelar qué)
+      const estados={};
+      for(const p of (data||[])){
+        const {data:yaVoto}=await supabase.rpc("ya_voto",{p_punto_id:p.id,p_socio_id:socio.id});
+        estados[p.id]=!!yaVoto;
+      }
+      setMisVotos(estados);
+      // Si los resultados están publicados, cargar el recuento final
+      if(asamblea.resultados_publicados){
+        const nuevos={};
+        for(const p of (data||[])){
+          const {data:rec}=await supabase.rpc("recuento_punto",{p_punto_id:p.id});
+          nuevos[p.id]=rec||[];
+        }
+        setRecuentos(nuevos);
+      }
+    })();
+  },[asamblea.id,socio.id]);
+
+  const votar=async(punto,opcion)=>{
+    setVotando(punto.id);
+    const {error}=await supabase.rpc("emitir_voto",{p_punto_id:punto.id,p_socio_id:socio.id,p_opcion:opcion});
+    setVotando(null);
+    if(error){ ok("❌ "+(error.message||"No se pudo registrar el voto")); return; }
+    setMisVotos(p=>({...p,[punto.id]:true}));
+    ok("✅ Voto registrado, gracias");
+  };
+
+  const ahora=new Date();
+  const apertura=asamblea.fecha_apertura_votos?new Date(asamblea.fecha_apertura_votos):null;
+  const cierre=asamblea.fecha_cierre_votos?new Date(asamblea.fecha_cierre_votos):null;
+  const votacionAbierta=apertura && ahora>=apertura && (!cierre||ahora<=cierre);
+  const votacionFutura=apertura && ahora<apertura;
+
+  return(<Card>
+    {notif&&<div style={{position:"fixed",top:20,right:20,zIndex:300,background:C.verde,color:C.blanco,padding:"12px 20px",borderRadius:12,fontWeight:600,fontSize:13,maxWidth:280}}>{notif}</div>}
+    <div style={{fontWeight:700,fontSize:15,color:C.text}}>{asamblea.titulo}</div>
+    <div style={{fontSize:12,color:C.muted,marginTop:2,marginBottom:10}}>{fmtFecha(asamblea.fecha)}</div>
+
+    {asamblea.orden_dia&&(
+      <div style={{marginBottom:12}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.4,marginBottom:4}}>Orden del día</div>
+        <p style={{whiteSpace:"pre-wrap",fontSize:13,color:C.gris,margin:0,lineHeight:1.5}}>{asamblea.orden_dia}</p>
+      </div>
+    )}
+
+    {votacionFutura&&(
+      <div style={{padding:"8px 12px",background:C.oroLight,borderRadius:8,fontSize:12,color:"#7a5c00",marginBottom:10}}>
+        ⏳ La votación se abrirá el {new Date(asamblea.fecha_apertura_votos).toLocaleString("es-ES")}
+      </div>
+    )}
+
+    {!cargando&&puntos.length>0&&(votacionAbierta||asamblea.resultados_publicados)&&(
+      <div style={{marginBottom:10}}>
+        <div style={{fontSize:11,fontWeight:700,color:C.gris,textTransform:"uppercase",letterSpacing:0.4,marginBottom:8}}>
+          {asamblea.resultados_publicados?"Resultados finales":"Puntos a votar"}
+        </div>
+        {puntos.map(p=>{
+          const filas=recuentos[p.id]||[];
+          const totalGeneral=filas.reduce((a,r)=>a+Number(r.total),0);
+          return(
+            <div key={p.id} style={{border:`1px solid ${C.border}`,borderRadius:9,padding:"10px 13px",marginBottom:8}}>
+              <div style={{fontWeight:600,fontSize:13,color:C.text}}>{p.titulo}</div>
+              {p.descripcion&&<p style={{fontSize:12,color:C.muted,margin:"3px 0 8px"}}>{p.descripcion}</p>}
+
+              {asamblea.resultados_publicados?(
+                (p.opciones||[]).map(op=>{
+                  const fila=filas.find(r=>r.opcion===op);
+                  const total=fila?Number(fila.total):0;
+                  const pct=totalGeneral>0?Math.round(total/totalGeneral*100):0;
+                  return(
+                    <div key={op} style={{marginBottom:5}}>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:C.gris,marginBottom:2}}>
+                        <span>{op}</span><span>{total} ({pct}%)</span>
+                      </div>
+                      <div style={{height:6,background:C.border,borderRadius:3,overflow:"hidden"}}>
+                        <div style={{height:6,width:`${pct}%`,background:C.granate,borderRadius:3}}/>
+                      </div>
+                    </div>
+                  );
+                })
+              ):misVotos[p.id]?(
+                <div style={{padding:"7px 10px",background:C.verdeLight,color:C.verde,borderRadius:7,fontSize:12,fontWeight:600,textAlign:"center"}}>✅ Ya has votado este punto</div>
+              ):(
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {(p.opciones||[]).map(op=>(
+                    <button key={op} onClick={()=>votar(p,op)} disabled={votando===p.id}
+                      style={{flex:"1 1 auto",padding:"8px 12px",background:votando===p.id?"#bbb":C.granate,color:C.blanco,border:"none",borderRadius:8,fontSize:12,fontWeight:700,cursor:votando===p.id?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                      {votando===p.id?"...":op}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    )}
+
+    {asamblea.acta_pdf_url&&<a href={asamblea.acta_pdf_url} target="_blank" rel="noreferrer" style={{display:"inline-block",padding:"7px 14px",background:C.granateLight,borderRadius:8,fontSize:12,fontWeight:700,color:C.granateDark,textDecoration:"none"}}>📄 Ver acta de esta asamblea</a>}
+  </Card>);
+}
+
 // ── TAB: DOCUMENTOS ───────────────────────────────────────
 function TabDocumentos({socio,generandoPDF,onDescargarFicha,misSolicitudes,viaCuenta}){
   const consentimientos=[
@@ -1267,6 +1401,7 @@ export default function PanelPenista(){
   const [actividades,setActividades]=useState([]);
   const [loteria,setLoteria]=useState([]);
   const [actas,setActas]=useState([]);
+  const [asambleas,setAsambleas]=useState([]);
   const [historialPagos,setHistorialPagos]=useState([]);
   const [misSolicitudes,setMisSolicitudes]=useState([]);
   const [noticias,setNoticias]=useState([]);
@@ -1343,7 +1478,7 @@ export default function PanelPenista(){
     let cancelado=false;
     (async()=>{
       setCargandoDatos(true);
-      const [cuotasRes, actRes, inscRes, insTodasRes, loteriaRes, actasRes, noticiasRes, verifRes] = await Promise.all([
+      const [cuotasRes, actRes, inscRes, insTodasRes, loteriaRes, actasRes, noticiasRes, verifRes, asambleasRes] = await Promise.all([
         supabase.from("cuotas").select("*").eq("socio_id",socio.id).order("temporada",{ascending:false}),
         supabase.from("actividades").select("*").neq("estado","cancelada").order("fecha",{ascending:true}),
         supabase.from("inscripciones").select("actividad_id,estado,pagado,fecha_pago").eq("socio_id",socio.id).neq("estado","cancelada"),
@@ -1352,6 +1487,7 @@ export default function PanelPenista(){
         supabase.from("actas").select("*").order("fecha",{ascending:false}),
         supabase.from("noticias").select("*").order("created_at",{ascending:false}),
         supabase.from("verificaciones").select("*").eq("socio_id",socio.id).order("created_at",{ascending:false}),
+        supabase.from("asambleas").select("*").order("fecha",{ascending:false}),
       ]);
       if(cancelado) return;
       const misInscripciones = inscRes.data||[];
@@ -1390,6 +1526,7 @@ export default function PanelPenista(){
       setActividades(actividadesFinal);
       setLoteria(loteriaRes.data||[]);
       setActas(actasRes.data||[]);
+      setAsambleas(asambleasRes.data||[]);
       setNoticias(noticiasRes.data||[]);
       setHistorialPagos(historial);
       setMisSolicitudes(verifRes.data||[]);
@@ -1460,6 +1597,7 @@ export default function PanelPenista(){
           {tab==="actividades"&&<TabActividades actividades={actividades} setActividades={setActividades} socio={socio}/>}
           {tab==="noticias"   &&<TabNoticias noticias={noticias}/>}
           {tab==="actas"      &&<TabActas actas={actas}/>}
+          {tab==="asambleas"  &&<TabAsambleas asambleas={asambleas} socio={socio}/>}
           {tab==="documentos" &&<TabDocumentos  socio={socio} generandoPDF={generandoPDF} onDescargarFicha={descargarFicha} misSolicitudes={misSolicitudes} viaCuenta={viaCuenta}/>}
         </>)}
       </div>
