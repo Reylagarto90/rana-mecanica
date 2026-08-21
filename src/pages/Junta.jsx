@@ -16,6 +16,16 @@ const C = {
 
 const LOGO = "/rana-mecanica/logo.jpg";
 
+// Emails de la junta directiva, para distinguir visualmente sus cuentas en el
+// listado de Cuentas (solo visual — los permisos reales los decide is_junta() en el servidor)
+const EMAILS_JUNTA = [
+  "j.ignaciopellicer@gmail.com",
+  "arturopalaciosbuitrago@gmail.com",
+  "carlosyagogranell@gmail.com",
+  "aupa_levante@hotmail.com",
+  "martaoli21@gmail.com",
+];
+
 // Carga el logo como base64 una sola vez, para poder insertarlo en los PDF generados con jsPDF
 let _logoBase64Promise = null;
 const cargarLogoBase64 = () => {
@@ -727,7 +737,11 @@ function CuentasPendientes({socios,setSocios}){
           <Card key={s.id} style={{borderLeft:`4px solid ${C.oro}`}}>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap"}}>
               <div>
-                <div style={{fontWeight:700,fontSize:14,color:C.text}}>{s.nombre} {s.apellidos} <span style={{fontFamily:"monospace",color:C.muted,fontWeight:400,fontSize:12}}>({s.numero})</span></div>
+                <div style={{fontWeight:700,fontSize:14,color:C.text}}>{s.nombre} {s.apellidos} <span style={{fontFamily:"monospace",color:C.muted,fontWeight:400,fontSize:12}}>({s.numero})</span>
+                  {EMAILS_JUNTA.includes((s.email||"").toLowerCase())&&(
+                    <span style={{marginLeft:8,background:C.oro,color:C.blanco,fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:20,letterSpacing:0.3}}>🏛️ JUNTA</span>
+                  )}
+                </div>
                 <div style={{fontSize:12,color:C.muted,marginTop:2}}>{s.email} · Solicitado {s.cuenta_solicitada_at?new Date(s.cuenta_solicitada_at).toLocaleDateString("es-ES"):"—"}</div>
               </div>
               <div style={{display:"flex",gap:8}}>
@@ -749,6 +763,9 @@ function CuentasPendientes({socios,setSocios}){
           <div>
             <span style={{fontWeight:600,fontSize:13}}>{s.nombre} {s.apellidos}</span>
             <span style={{fontFamily:"monospace",color:C.muted,fontSize:11,marginLeft:8}}>{s.numero}</span>
+            {EMAILS_JUNTA.includes((s.email||"").toLowerCase())&&(
+              <span style={{marginLeft:8,background:C.oro,color:C.blanco,fontSize:9,fontWeight:800,padding:"2px 7px",borderRadius:20,letterSpacing:0.3}}>🏛️ JUNTA</span>
+            )}
           </div>
           <div style={{display:"flex",alignItems:"center",gap:12}}>
             <span style={{fontSize:12,color:C.muted}}>{s.email}</span>
