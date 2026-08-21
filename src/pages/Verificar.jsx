@@ -460,6 +460,7 @@ function FormularioUnificado({socio,onEnviado,onLogout,onCambiarPerfil,perfiles}
     comentarios: "",
   });
   const [enviando,setEnviando]=useState(false);
+  const [webTrampa,setWebTrampa]=useState(""); // honeypot anti-spam: invisible para personas
   const setF=(k,v)=>setForm(f=>({...f,[k]:v}));
 
   const hayCambiosDatos=()=>{
@@ -473,6 +474,7 @@ function FormularioUnificado({socio,onEnviado,onLogout,onCambiarPerfil,perfiles}
 
   const enviar=async()=>{
     if(!form.rgpd){alert("El consentimiento de tratamiento de datos es obligatorio para ser socio.");return;}
+    if(webTrampa){setEnviando(true);return;} // honeypot: si esto tiene contenido, es un bot — se descarta en silencio
     setEnviando(true);
 
     // 1. Guardar consentimientos y datos de Levante mediante función segura
@@ -540,6 +542,11 @@ function FormularioUnificado({socio,onEnviado,onLogout,onCambiarPerfil,perfiles}
 
   return(
     <div style={{minHeight:"100vh",background:"#f5f5f5",fontFamily:"system-ui,sans-serif"}}>
+      {/* Honeypot anti-spam: invisible para personas, los bots lo suelen rellenar */}
+      <div style={{position:"absolute",left:"-9999px",width:1,height:1,overflow:"hidden"}} aria-hidden="true">
+        <label htmlFor="web">No rellenar este campo</label>
+        <input id="web" name="web" type="text" tabIndex="-1" autoComplete="off" value={webTrampa} onChange={e=>setWebTrampa(e.target.value)}/>
+      </div>
       {/* HEADER */}
       <div style={{background:C.granateDark,padding:"13px 18px",display:"flex",justifyContent:"space-between",alignItems:"center",position:"sticky",top:0,zIndex:100}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>

@@ -243,6 +243,7 @@ export default function FormularioAlta() {
     consentWhatsapp: false,
   });
   const [errores, setErrores] = useState({});
+  const [webTrampa, setWebTrampa] = useState(""); // honeypot anti-spam: invisible para personas, los bots suelen rellenarlo
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -273,6 +274,11 @@ export default function FormularioAlta() {
     if (paso === 2) {
       const e = validarPaso2();
       if (Object.keys(e).length) { setErrores(e); return; }
+
+      // Honeypot: si este campo invisible tiene contenido, es un bot — se descarta
+      // en silencio, sin dar ningún error que le ayude a saber que fue detectado.
+      if (webTrampa) { setEnviado(true); return; }
+
       setEnviando(true); setErrorEnvio("");
 
       const registro = {
@@ -373,7 +379,9 @@ export default function FormularioAlta() {
       <div style={{ width: "100%", maxWidth: 480 }}>
         {/* CABECERA */}
         <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div style={{ fontSize: 48, marginBottom: 8 }}>🐸</div>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>
+            <img src="/rana-mecanica/logo.jpg" alt="Peña La Rana Mecánica" style={{ width: 72, height: 72, borderRadius: "50%", objectFit: "cover", border: "2px solid rgba(255,255,255,0.3)" }}/>
+          </div>
           <h1 style={{ fontFamily: "'Playfair Display', serif", color: C.blanco, fontSize: 26, marginBottom: 6 }}>
             Hazte peñista
           </h1>
@@ -392,6 +400,12 @@ export default function FormularioAlta() {
 
         {/* TARJETA */}
         <div style={{ background: C.blanco, borderRadius: 24, padding: "30px 28px", boxShadow: "0 24px 60px rgba(0,0,0,0.4)" }}>
+
+          {/* Honeypot anti-spam: invisible para personas, los bots lo suelen rellenar */}
+          <div style={{ position: "absolute", left: "-9999px", width: 1, height: 1, overflow: "hidden" }} aria-hidden="true">
+            <label htmlFor="web">No rellenar este campo</label>
+            <input id="web" name="web" type="text" tabIndex="-1" autoComplete="off" value={webTrampa} onChange={e => setWebTrampa(e.target.value)} />
+          </div>
 
           {/* PASO 0 — Datos personales */}
           {paso === 0 && (
