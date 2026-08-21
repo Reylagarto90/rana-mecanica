@@ -30,12 +30,25 @@ function RutaPrivada({ children }) {
       // corresponda de verdad a un email de la junta directiva.
       const { data: { session } } = await supabase.auth.getSession()
       const email = session?.user?.email?.toLowerCase()
-      if (email && EMAILS_JUNTA.includes(email)) {
-        setEstado('ok')
-      } else {
+      if (!email || !EMAILS_JUNTA.includes(email)) {
         sessionStorage.removeItem('junta_auth')
         setEstado('no')
+        return
       }
+      // Si esta cuenta tiene la verificación en dos pasos (2FA) activada,
+      // hay que asegurarse de que la sesión actual YA la completó — si no,
+      // alguien podría haber entrado por Mi Zona (que no pide el código)
+      // y colarse aquí directamente sin haber pasado el segundo factor.
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      if (aal?.nextLevel === 'aal2' && aal?.currentLevel !== aal?.nextLevel) {
+        // Tiene 2FA pero no lo ha completado en esta sesión: fuera, que
+        // vuelva a entrar por el login de Junta para hacerlo bien.
+        await supabase.auth.signOut()
+        sessionStorage.removeItem('junta_auth')
+        setEstado('no')
+        return
+      }
+      setEstado('ok')
     })()
   }, [])
 
