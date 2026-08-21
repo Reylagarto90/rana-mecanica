@@ -67,7 +67,7 @@ function PantallaLogin({ onLogin, onCambiarPass, onNecesitaMFA, onOfrecer2FA, on
       const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
       setLoading(false)
       if (aal?.nextLevel === 'aal2' && aal?.currentLevel !== aal?.nextLevel) {
-        onNecesitaMFA(factores.totp[0])
+        onNecesitaMFA(factores.totp[0], data.user)
         return
       }
       onLogin(data.user)
@@ -335,7 +335,7 @@ export default function JuntaLogin() {
     <PantallaLogin
       onLogin={finalizarLogin}
       onCambiarPass={(user)=>{setUserTemp(user);setPantalla('cambiar')}}
-      onNecesitaMFA={(factor)=>{setFactorMFA(factor);setPantalla('mfa')}}
+      onNecesitaMFA={(factor,user)=>{setFactorMFA(factor);setUserTemp(user);setPantalla('mfa')}}
       onOfrecer2FA={(user)=>{setUserTemp(user);setPantalla('ofrecer2fa')}}
       onRecuperar={()=>setPantalla('recuperar')}
     />
