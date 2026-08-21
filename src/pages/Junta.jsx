@@ -2659,7 +2659,7 @@ function Noticias({noticias,setNoticias,socios}){
 // ══════════════════════════════════════════════════════════
 // ASAMBLEAS Y VOTACIONES
 // ══════════════════════════════════════════════════════════
-function Asambleas({asambleas,setAsambleas}){
+function Asambleas({asambleas,setAsambleas,socios}){
   const [modal,setModal]=useState(false);
   const [editando,setEditando]=useState(null);
   const [form,setForm]=useState({titulo:"",fecha:hoy,orden_dia:"",fecha_apertura_votos:"",fecha_cierre_votos:""});
@@ -2770,6 +2770,7 @@ function Asambleas({asambleas,setAsambleas}){
       <DetalleAsamblea
         asamblea={asambleas.find(x=>x.id===detalle.id)||detalle}
         anterior={anteriorDe(detalle)}
+        socios={socios}
         onCerrar={()=>setDetalle(null)}
         onActualizar={(cambios)=>setAsambleas(p=>p.map(x=>x.id===detalle.id?{...x,...cambios}:x))}
       />
@@ -2777,7 +2778,7 @@ function Asambleas({asambleas,setAsambleas}){
   </div>);
 }
 
-function DetalleAsamblea({asamblea,anterior,onCerrar,onActualizar}){
+function DetalleAsamblea({asamblea,anterior,socios,onCerrar,onActualizar}){
   const [puntos,setPuntos]=useState([]);
   const [cargando,setCargando]=useState(true);
   const [modalPunto,setModalPunto]=useState(false);
@@ -2788,6 +2789,9 @@ function DetalleAsamblea({asamblea,anterior,onCerrar,onActualizar}){
   const [subiendoActa,setSubiendoActa]=useState(false);
   const [aperturaInput,setAperturaInput]=useState(asamblea.fecha_apertura_votos?asamblea.fecha_apertura_votos.slice(0,16):"");
   const [cierreInput,setCierreInput]=useState(asamblea.fecha_cierre_votos?asamblea.fecha_cierre_votos.slice(0,16):"");
+  const [votantesAbiertos,setVotantesAbiertos]=useState(null); // punto_id del que se está viendo la lista
+  const [votantes,setVotantes]=useState([]); // nombres de quien ha votado ese punto
+  const [cargandoVotantes,setCargandoVotantes]=useState(false);
   const ok=(msg)=>{setNotif(msg);setTimeout(()=>setNotif(null),3000);};
 
   const cargarPuntos=async()=>{
@@ -2842,6 +2846,20 @@ function DetalleAsamblea({asamblea,anterior,onCerrar,onActualizar}){
     await supabase.from("puntos_votacion").delete().eq("id",p.id);
     setPuntos(prev=>prev.filter(x=>x.id!==p.id));
   };
+
+  const verVotantes=async(puntoId)=>{
+    if(votantesAbiertos===puntoId){ setVotantesAbiertos(null); return; }
+    setVotantesAbiertos(puntoId);
+    setCargandoVotantes(true);
+    const {data,error}=await supabase.rpc("quien_voto",{p_punto_id:puntoId});
+    setCargandoVotantes(false);
+    if(error){ setVotantes([]); ok("❌ No se pudo consultar"); return; }
+    const ids=new Set((data||[]).map(v=>typeof v==="object"?(v.socio_id??v.quien_voto):v));
+    const nombres=(socios||[]).filter(s=>ids.has(s.id)).map(s=>`${s.nombre} ${s.apellidos}`).sort();
+    setVotantes(nombres);
+  };
+
+  const totalConDerechoVoto=(socios||[]).filter(s=>s.estado==="activo").length;
 
   const guardarVentana=async(campo,valor)=>{
     const iso=valor?new Date(valor).toISOString():null;
@@ -2959,6 +2977,20 @@ function DetalleAsamblea({asamblea,anterior,onCerrar,onActualizar}){
                 })}
                 <div style={{fontSize:10,color:C.muted,marginTop:4}}>Total de votos emitidos: {totalGeneral}</div>
               </div>
+              <button onClick={()=>verVotantes(p.id)} style={{marginTop:8,background:"none",border:"none",cursor:"pointer",color:C.azul,fontSize:11,fontWeight:600,fontFamily:"inherit"}}>
+                {votantesAbiertos===p.id?"▲ Ocultar":"▼"} Ver quién ha votado ({totalGeneral}/{totalConDerechoVoto})
+              </button>
+              {votantesAbiertos===p.id&&(
+                <div style={{marginTop:6,padding:"8px 10px",background:C.grisLight,borderRadius:7,maxHeight:140,overflowY:"auto"}}>
+                  {cargandoVotantes?(
+                    <span style={{fontSize:12,color:C.muted}}>Cargando...</span>
+                  ):votantes.length===0?(
+                    <span style={{fontSize:12,color:C.muted}}>Nadie ha votado todavía.</span>
+                  ):(
+                    votantes.map(n=><div key={n} style={{fontSize:12,color:C.text,padding:"2px 0"}}>{n}</div>)
+                  )}
+                </div>
+              )}
             </div>
           );
         })}
@@ -4150,7 +4182,7 @@ export default function Junta(){
       case "loteria":       return <Loteria socios={socios} loteria={loteria} setLoteria={setLoteria} ejercicios={ejercicios} setMovimientos={setMovimientos}/>;
       case "actividades":   return <Actividades socios={socios} actividades={actividades} setActividades={setActividades} inscripciones={inscripciones} setInscripciones={setInscripciones} ejercicios={ejercicios} setMovimientos={setMovimientos}/>;
       case "actas":         return <Actas actas={actas} setActas={setActas} socios={socios}/>;
-      case "asambleas":     return <Asambleas asambleas={asambleas} setAsambleas={setAsambleas}/>;
+      case "asambleas":     return <Asambleas asambleas={asambleas} setAsambleas={setAsambleas} socios={socios}/>;
       case "auditoria":     return <Auditoria/>;
       case "noticias":      return <Noticias noticias={noticias} setNoticias={setNoticias} socios={socios}/>;
       case "tesoreria":     return <Tesoreria ejercicios={ejercicios} setEjercicios={setEjercicios} movimientos={movimientos} setMovimientos={setMovimientos}/>;
