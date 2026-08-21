@@ -1519,7 +1519,7 @@ function Cuotas({socios,cuotas,setCuotas,ejercicios,setMovimientos,tarifas}){
         cuotaFinal={...cuotaFinal,movimiento_id:movimientoId};
       }
     }
-    setCuotas(p=>[...p,cuotaFinal]);
+    setCuotas(p=>p.some(x=>x.id===cuotaFinal.id)?p.map(x=>x.id===cuotaFinal.id?cuotaFinal:x):[...p,cuotaFinal]);
     setModal(false);
     ok(cuotaFinal.pagado?(cuotaFinal.movimiento_id?"✅ Cuota registrada · ingreso añadido a Tesorería":"✅ Cuota registrada (revisa Tesorería, no se pudo vincular el ingreso)"):"✅ Cuota registrada");
   };
@@ -1779,7 +1779,10 @@ function Loteria({socios,loteria,setLoteria,ejercicios,setMovimientos}){
       pagado:false, fecha_pago:null,
     }]).select();
     if(error){ok("❌ Error");return;}
-    setLoteria(p=>[...p,...data]);
+    setLoteria(p=>{
+      const nuevos=data.filter(d=>!p.some(x=>x.id===d.id));
+      return [...p,...nuevos];
+    });
     setModal(false);
     ok("✅ Lotería repartida");
   };
@@ -2007,7 +2010,10 @@ function Actividades({socios,actividades,setActividades,inscripciones,setInscrip
     }else{
       const {data,error}=await supabase.from("actividades").insert([datosConCartel]).select();
       if(error){ok("❌ Error");return;}
-      setActividades(p=>[...p,...data]);
+      setActividades(p=>{
+        const nuevos=data.filter(d=>!p.some(x=>x.id===d.id));
+        return [...p,...nuevos];
+      });
       const destinatariosFinal=destinatariosMayores14(socios).filter(s=>seleccionEmail.has(s.id));
       if(avisarEmail && destinatariosFinal.length>0){
         setEnviandoAviso(true);
@@ -2553,7 +2559,10 @@ function Noticias({noticias,setNoticias,socios}){
     }]).select();
     setPublicando(false);
     if(error){ok("❌ Error al publicar");return;}
-    setNoticias(p=>[...data,...p]);
+    setNoticias(p=>{
+      const nuevos=data.filter(d=>!p.some(x=>x.id===d.id));
+      return [...nuevos,...p];
+    });
     setModal(false);
     setForm({titulo:"",cuerpo:""});
     setEnviarEmail(true);
@@ -2682,7 +2691,10 @@ function Actas({actas,setActas,socios}){
     const {data,error}=await supabase.from("actas").insert([{...form,pdf_url,pdf_path}]).select();
     setSubiendo(false);
     if(error){ok("❌ Error al guardar el acta");return;}
-    setActas(p=>[...data,...p]);
+    setActas(p=>{
+      const nuevos=data.filter(d=>!p.some(x=>x.id===d.id));
+      return [...nuevos,...p];
+    });
     setModal(false);
     setForm({titulo:"",fecha:hoy,resumen:""});
     setEnviarEmail(false);
